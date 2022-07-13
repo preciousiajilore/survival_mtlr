@@ -6,6 +6,61 @@ import torch
 import torch.nn as nn
 
 
+def build_sequential_nn(in_features, dims, norm, activation, dropout):
+    """Build a sequential neural network."""
+    layers = []
+    for i in range(len(dims)):
+        if i == 0:
+            layers.append(nn.Linear(in_features, dims[i]))
+        else:
+            layers.append(nn.Linear(dims[i-1], dims[i]))
+        if i < len(dims) - 1:
+            if norm:
+                layers.append(nn.BatchNorm1d(dims[i]))
+            layers.append(getattr(nn, activation)())
+            if dropout is not None:
+                layers.append(nn.Dropout(dropout))
+    return layers
+
+
+def build_sequential_mtlr(in_features, dims, norm, activation, dropout):
+    layers = build_sequential_nn(in_features, dims, norm, activation, dropout)
+    layers.pop()
+    if len(dims) > 1:
+        layers.append(MTLR(dims[-2], dims[-1]))
+    else:
+        layers.append(MTLR(in_features, dims[-1]))
+    return nn.Sequential(*layers)
+
+
+class DeepMTLR(nn.Module):
+    """MTLR model with regularization"""
+    def __init__(self, in_features, num_time_bins, hidden_size=None, dropout=None, activation='ReLU', norm=False):
+        super().__init__()
+        if hidden_size is None:
+            hidden_size = []
+        self.num_time_bins = num_time_bins
+        self.in_features = in_features
+        self.dropout = dropout
+        self.norm = norm
+        self.dims = hidden_size
+        self.dims.append(num_time_bins)
+        self.activation = activation
+
+        self.model = self._build_model()
+
+    def _build_model(self):
+        return build_sequential_mtlr(self.in_features, self.dims, self.norm, self.activation, self.dropout)
+
+    def forward(self, x):
+        return self.model(x)
+
+    def reset_parameters(self):
+        for layer in self.model.children():
+            if hasattr(layer, 'reset_parameters'):
+                layer.reset_parameters()
+
+
 class MTLR(nn.Module):
     """Multi-task logistic regression for individualised
     survival prediction.
@@ -88,10 +143,12 @@ class MTLR(nn.Module):
                 f" num_time_bins={self.num_time_bins})")
 
 
-def masked_logsumexp(x: torch.Tensor,
-                     mask: torch.Tensor,
-                     dim: int = -1) -> torch.Tensor:
-    """Computes logsumexp over elements of a tensor specified by a mask
+def masked_logsumexp(
+        x: torch.Tensor,
+        mask: torch.Tensor,
+        dim: int = -1
+) -> torch.Tensor:
+    """Computes logsumexp over elements of a tensor specified by a mask (two-level)
     in a numerically stable way.
 
     Parameters
@@ -113,15 +170,17 @@ def masked_logsumexp(x: torch.Tensor,
     max_val, _ = (x * mask).max(dim=dim)
     max_val = torch.clamp_min(max_val, 0)
     return torch.log(
-        torch.sum(torch.exp(x - max_val.unsqueeze(dim)) * mask,
+        torch.sum(torch.exp((x - max_val.unsqueeze(dim)) * mask) * mask,
                   dim=dim)) + max_val
 
 
-def mtlr_neg_log_likelihood(logits: torch.Tensor,
-                            target: torch.Tensor,
-                            model: torch.nn.Module,
-                            C1: float,
-                            average: bool = False) -> torch.Tensor:
+def mtlr_neg_log_likelihood(
+        logits: torch.Tensor,
+        target: torch.Tensor,
+        model: torch.nn.Module,
+        c1: float,
+        average: bool = False
+) -> torch.Tensor:
     """Computes the negative log-likelihood of a batch of model predictions.
 
     Parameters
@@ -133,7 +192,7 @@ def mtlr_neg_log_likelihood(logits: torch.Tensor,
         Tensor with the encoded ground truth survival.
     model
         PyTorch Module with at least `MTLR` layer.
-    C1
+    c1
         The L2 regularization strength.
     average
         Whether to compute the average log likelihood instead of sum
@@ -158,7 +217,7 @@ def mtlr_neg_log_likelihood(logits: torch.Tensor,
     # L2 regularization
     for k, v in model.named_parameters():
         if "mtlr_weight" in k:
-            nll_total += C1/2 * torch.sum(v**2)
+            nll_total += c1 / 2 * torch.sum(v ** 2)
 
     return nll_total
 

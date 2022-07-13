@@ -27,16 +27,15 @@ model = MTLR(x.shape[1], len(time_bins))
 logits = model(x)
 
 # compute minibatch loss
-loss = mtlr_neg_log_likelihood(logits, target, model, C1=1., average=True)
+loss = mtlr_neg_log_likelihood(logits, target, model, c1=1., average=True)
 
 with torch.no_grad():
-  # predict survival curves at training timepoints
-  survival = mtlr_survival(logits)
+    # predict survival curves at training timepoints
+    survival = mtlr_survival(logits)
 
-  # ...or at arbitrary times
-  new_times = torch.tensor([1., 1.5, 2.])
-  survival = mtlr_survival_at_times(logits, time_bins, new_times)
-
+    # ...or at arbitrary times
+    new_times = torch.tensor([1., 1.5, 2.])
+    survival = mtlr_survival_at_times(logits, time_bins, new_times)
 
 # use just like any other PyTorch module
 model = nn.Sequential(
