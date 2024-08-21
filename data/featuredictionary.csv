@@ -4,7 +4,7 @@ feature 1,monthsurg,months since surgery,na,na,
 
 feature 2,age,age,na,na,
 
-feature 3,stxlocation,"StxLocation  LEGEND: 0=penile, 1=bulbar, 2= membranous/posterior, 3=panurethral, 4= penobulbar, 5= bulbomembranous, 6 = pars fixa",before surgery,one-hot (discrete data points),
+feature 3,stxlocation,"StxLocation LEGEND: 0=penile, 1=bulbar, 2= membranous/posterior, 3=panurethral, 4= penobulbar, 5= bulbomembranous, 6 = pars fixa",before surgery,one-hot (discrete data points),
 
 feature 4,distal,"Distal Bulbar Involvement (0=No, 1=Yes)",before surgery,,
 

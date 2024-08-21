@@ -19,12 +19,11 @@ Cormorbidity? No = 0; > or = 1 = 1,UTI or Abcess? 0 = no; 1 = yes; 2 = unknown,L
 Diabetes (yes 1 /no 0 ),Preop Indwelling suprapubic catheter (SPC),Suprapubic Catheter Postop (if they had one before OR 2nd stage),"90d Clavien Grade– Clavien I-1, Clavien II-2, Clavien IIIa=3, Clavien IIIb=4, Clavien IVa=5, Clavien IVb=6, Clavien V=7)",,,,,,,,,,,,,
 
 COPD (yes/no),,SP cath post op (yes=1; no = 0),"Number of Early complications (0,1,2,3, etc.)",,,,,,,,,,,,,
-
-COPD (1=yes; 0=no),,,"90d Type of significant complication. 0=Wound (infection, abscess, hematoma), 1=UTI treated (uti, epididymitis, etc.), 2=Catheter-related 3=Hematuria requiring catheter change, surgery, admission, etc, 4=Acute urinary retention after catheter removal, 5=cardiovascular, 6=pulmonary, 7=Other",,,,,,,,,,,,,
+,,"90d Type of significant complication. 0=Wound (infection, abscess, hematoma), 1=UTI treated (uti, epididymitis, etc.), 2=Catheter-related 3=Hematuria requiring catheter change, surgery, admission, etc, 4=Acute urinary retention after catheter removal, 5=cardiovascular, 6=pulmonary, 7=Other",,,,,,,,,,,,,
 
 Smoker (yes 1 /no 0 ),,,"90d Type of any complication (categorized) (0=Wound (infection, abscess, hematoma), 1=UTI treated (uti, epididymitis, etc.), 2=Catheter-related – catheter change, dislodged and came out, etc), 3=Hematuria requiring treatment (requiring catheter change, surgery, admission, etc.), 4=Acute urinary retention after catheter removal, 5=cardiovascular, 6=pulmonary, 7=Other)",,,,,,,,,,,,,
 
-Smoker (0=no/quit>3mo; 1=yes),,,"90d Clavien Grade (I will use the updated Clavien dindo classification as attached) – Clavien I-1, Clavien II-2, Clavien IIIa=3, Clavien IIIb=4, Clavien IVa=5, Clavien IVb=6, Clavien V=7)",,,,,,,,,,,,,
+,,"90d Clavien Grade (I will use the updated Clavien dindo classification as attached) – Clavien I-1, Clavien II-2, Clavien IIIa=3, Clavien IIIb=4, Clavien IVa=5, Clavien IVb=6, Clavien V=7)",,,,,,,,,,,,,
 
 "BMI>35, 0=no, 1=yes",,,Minor (I-II) = 0 or Major (III-V) = 1 Complication,,,,,,,,,,,,,
 
