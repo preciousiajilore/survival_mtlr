@@ -1,0 +1,55 @@
+{
+  "os": "macOS-15.3.1-arm64-arm-64bit",
+  "python": "3.12.1",
+  "startedAt": "2025-02-25T02:58:47.701521Z",
+  "args": [
+    "--model",
+    "CoxPH",
+    "--lr",
+    "0.001",
+    "--weight_decay",
+    "0.0001",
+    "--batch_size",
+    "16",
+    "--n_epochs",
+    "100",
+    "--early_stop",
+    "True",
+    "--seed",
+    "42"
+  ],
+  "program": "/Users/preciousajilore/Documents/GitHub/torchmtlr/run.py",
+  "codePath": "run.py",
+  "git": {
+    "remote": "https://github.com/preciousiajilore/survival_mtlr.git",
+    "commit": "19da4542d0e3ef4143f00536353fecb37d5377b3"
+  },
+  "email": "ajilore@ualberta.ca",
+  "root": "/Users/preciousajilore/Documents/GitHub/torchmtlr",
+  "host": "Mac",
+  "username": "preciousajilore",
+  "executable": "/Users/preciousajilore/Documents/GitHub/torchmtlr/survivalenv/bin/python3",
+  "codePathLocal": "run.py",
+  "cpu_count": 8,
+  "cpu_count_logical": 8,
+  "disk": {
+    "/": {
+      "total": "245107195904",
+      "used": "179056107520"
+    }
+  },
+  "memory": {
+    "total": "8589934592"
+  },
+  "cpu": {
+    "count": 8,
+    "countLogical": 8
+  },
+  "apple": {
+    "name": "Apple M2",
+    "ecpuCores": 4,
+    "pcpuCores": 4,
+    "gpuCores": 10,
+    "memoryGb": 8
+  }
+}
