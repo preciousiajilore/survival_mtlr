@@ -23,6 +23,7 @@ colors = [
 light_colors = ['#fbdfe2', '#c7dff0', '#fcfce3', '#cfe7c4']
 
 """
+"Smoker"
 "Age_calc",
         "Transection",
         "COPD",
@@ -40,11 +41,11 @@ light_colors = ['#fbdfe2', '#c7dff0', '#fcfce3', '#cfe7c4']
 """
 
 risk_factors = [
-          "Smoker"
+          "Transection",
  ]
 risk_factors_group = [
 
-    ['Non-Smoker', 'Ex-Smoker',"Smoker"]          # or whatever your 0/1 means
+    ['No', 'Yes']          # or whatever your 0/1 means
 
      
     ]
@@ -114,19 +115,19 @@ for i, risk in enumerate(risk_factors):
         groups = data[risk]
 
         # Log-rank test across all groups
-        results = multivariate_logrank_test(T, groups=groups, event_observed=E)
-        #results = logrank_test(lower_group["datetofailureorfollowup"], upper_group["datetofailureorfollowup"], lower_group["Failure"], upper_group["Failure"])
+        #results = multivariate_logrank_test(T, groups=groups, event_observed=E)
+        results = logrank_test(lower_group["datetofailureorfollowup"], upper_group["datetofailureorfollowup"], lower_group["Failure"], upper_group["Failure"])
         results.print_summary()
         p_val = results.p_value
 
         # Kaplan-Meier curve
         low_group = KaplanMeierFitter().fit(lower_group["datetofailureorfollowup"], event_observed=lower_group["Failure"], label=group_name[0])
-        mid_group = KaplanMeierFitter().fit(mid_group["datetofailureorfollowup"], event_observed=mid_group["Failure"], label=group_name[1])
-        upper_group = KaplanMeierFitter().fit(upper_group["datetofailureorfollowup"], event_observed=upper_group["Failure"], label=group_name[2])
+        #mid_group = KaplanMeierFitter().fit(mid_group["datetofailureorfollowup"], event_observed=mid_group["Failure"], label=group_name[1])
+        upper_group = KaplanMeierFitter().fit(upper_group["datetofailureorfollowup"], event_observed=upper_group["Failure"], label=group_name[1])
 
         low_group.plot_survival_function(color=colors[0])
-        mid_group.plot_survival_function(color=colors[1])
-        upper_group.plot_survival_function(color=colors[2])
+        #mid_group.plot_survival_function(color=colors[1])
+        upper_group.plot_survival_function(color=colors[1])
 
         plt.xlabel('Months', fontsize=12)
         plt.ylabel('Probability', fontsize=12)
