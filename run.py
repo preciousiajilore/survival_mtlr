@@ -55,7 +55,7 @@ def main(args=None):
     wandb.define_metric("AUC", summary="mean")
 
     args = wandb.config
-    data = pd.read_csv("/Users/preciousajilore/Documents/GitHub/torchmtlr/notebooks/first_test.csv")
+    data = pd.read_csv("/Users/preciousajilore/Documents/GitHub/torchmtlr/notebooks/without_neg.csv")
     data.rename(columns={'time_to_event': 'time',
                          'Failure': 'event'}, inplace=True)
     # columns that need to be standardized
@@ -85,6 +85,10 @@ def main(args=None):
 
         ]
     data = data.dropna(subset=features + ['time', 'event']).reset_index(drop=True)
+    
+    data = data[data['time'] >= 0].reset_index(drop=True)
+    print('NaNs per column:\n', data.isna().sum())
+    #print(data[data['time'] < 0])
 
     cols_wo_stdz = list(set(features).symmetric_difference(cols_stdz))  # including time and event
     stdz = [([col], StandardScaler()) for col in cols_stdz]
@@ -143,6 +147,15 @@ def main(args=None):
         x_train_val = data_train_val.drop(["time", "event"], axis=1).values
         t_train_val, e_train_val = data_train_val["time"].values, data_train_val["event"].values
 
+        print("NaNs after splitting:", data_train.isnull().sum())
+        print("NaNs after mapping:", data_train.isnull().sum())
+        print("Check values:", data_train.describe())
+
+        print('Sample x_train:', x_train[:5])
+        print('Sample t_train:', t_train[:5])
+        print('Sample e_train:', e_train[:5])
+        print('t_train min/max:', np.min(t_train), np.max(t_train))
+        print('e_train unique:', np.unique(e_train))
         # create time bins for discrete survival analysis models
         if args.model in ["MTLR", "DeepHit"]:
             discrete_bins = make_time_bins(t_train, event=e_train)
@@ -158,13 +171,19 @@ def main(args=None):
                 activation=args.activation,
                 dropout=args.dropout
             )
+            
             model.fit(data_train, data_val, device=device, batch_size=args.batch_size, epochs=args.n_epochs,
                       lr=args.lr, lr_min=1e-3 * args.lr, weight_decay=args.weight_decay, early_stop=args.early_stop,
                       fname=folder + f'/{model.__class__.__name__}', verbose=args.verbose)
+            
             x_test = torch.from_numpy(x_test).float().to(device)
             surv_test = model.predict_survival(x_test)
             time_coordinates = model.time_bins
             time_coordinates = np.sort(np.unique(time_coordinates))
+            print("time_coordinates:", time_coordinates)
+            print("diffs:", np.diff(time_coordinates))
+            print("duplicates:", len(time_coordinates) - len(np.unique(time_coordinates)))
+            print("min/max:", time_coordinates.min(), time_coordinates.max())
         elif args.model == "MTLR":
             model = MTLR(
                 n_features=args.n_features,
