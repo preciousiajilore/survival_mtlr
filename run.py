@@ -52,12 +52,35 @@ def main(args=None):
     wandb.define_metric("AUC", summary="mean")
 
     args = wandb.config
-    data = pd.read_excel("/Users/preciousajilore/Documents/GitHub/torchmtlr/notebooks/first_test.csv")
-    data.rename(columns={'datetofailurefu': 'time',
-                         'failure': 'event'}, inplace=True)
+    data = pd.read_csv("/Users/preciousajilore/Documents/GitHub/torchmtlr/notebooks/first_test.csv")
+    data.rename(columns={'time_to_event': 'time',
+                         'Failure': 'event'}, inplace=True)
     # columns that need to be standardized
-    cols_stdz = ['stxlocation', 'stxetiology', 'Stxlength', 'charlsons', '#prevprocedures', 'cysto']
-    features = data.columns.to_list()
+    """
+      Index(['Age_calc', 'Date of Surgery', 'COPD', 'Diabetes', 'COPD.1', 'Smoker',
+       'Abx', 'Transection', 'Failure', 'fu', 'datetofailureorfollowup',
+       'ER visits', 'UTI  Post', 'UTI  recurring', 'foley', 'failure date',
+       'time_to_event'],
+      dtype='object')
+    
+    """
+    cols_stdz = ['Age_calc', 'ER visits']
+    #features = data.columns.to_list()
+    features = [
+    'Age_calc',    # keep
+    'COPD',        # keep
+    'Diabetes',
+    'COPD.1',    # keep
+    'Smoker',      # keep
+    'Abx',         # keep
+    'Transection', # keep
+    'Failure',
+    'fu',
+    'datetofailureorfollowup',
+    'ER visits', 'UTI  Post', 'UTI  recurring', 'foley', 'failure date',
+    'time'
+
+        ]
     cols_wo_stdz = list(set(features).symmetric_difference(cols_stdz))  # including time and event
     stdz = [([col], StandardScaler()) for col in cols_stdz]
     wo_stdz = [(col, None) for col in cols_wo_stdz]
