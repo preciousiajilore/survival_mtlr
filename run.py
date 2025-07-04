@@ -32,6 +32,9 @@ folder = 'logs/Baseline'
 if not os.path.exists(folder):
     os.makedirs(folder)
 
+#time_coordinates = np.array(time_coordinates)
+#time_coordinates = np.sort(np.unique(time_coordinates))
+
 
 def main(args=None):
     if isinstance(args, argparse.Namespace):
@@ -74,17 +77,24 @@ def main(args=None):
     'Smoker',      # keep
     'Abx',         # keep
     'Transection', # keep
-    'Failure',
-    'fu',
-    'datetofailureorfollowup',
-    'ER visits', 'UTI  Post', 'UTI  recurring', 'foley', 'failure date',
+    'event',
+     
+    'ER visits', 'UTI  Post', 'UTI  recurring',
+
     'time'
 
         ]
+    data = data.dropna(subset=features + ['time', 'event']).reset_index(drop=True)
+
     cols_wo_stdz = list(set(features).symmetric_difference(cols_stdz))  # including time and event
     stdz = [([col], StandardScaler()) for col in cols_stdz]
     wo_stdz = [(col, None) for col in cols_wo_stdz]
     columns_transform = stdz + wo_stdz
+
+    #Debugging
+    print(data[features].isnull().sum())
+    print(data[features].dtypes)
+
     if args.early_stop:
         pct_train = 0.4
         pct_val = 0.2
@@ -93,7 +103,7 @@ def main(args=None):
         pct_train = 0.6
         pct_val = 0.0
         pct_test = 0.4
-
+    
     args.n_features = len(features) - 2     # excluding time and event
     args.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     args.device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -154,6 +164,7 @@ def main(args=None):
             x_test = torch.from_numpy(x_test).float().to(device)
             surv_test = model.predict_survival(x_test)
             time_coordinates = model.time_bins
+            time_coordinates = np.sort(np.unique(time_coordinates))
         elif args.model == "MTLR":
             model = MTLR(
                 n_features=args.n_features,
@@ -170,6 +181,7 @@ def main(args=None):
             surv_test = model.predict_survival(x_test)
             time_coordinates = model.time_bins
             time_coordinates = pad_tensor(time_coordinates, 0, where='start')
+            time_coordinates = np.sort(np.unique(time_coordinates))
         elif args.model == "CQRNN":
             model = CQRNN(
                 n_features=args.n_features,
@@ -229,6 +241,7 @@ def main(args=None):
             surv_df = model.predict_surv_df(x_test)
             time_coordinates = surv_df.index.values
             surv_test = surv_df.values.T
+            time_coordinates = np.sort(np.unique(time_coordinates))
         elif args.model == "CoxTime":
             labtrans = CoxTime.label_transform()
             labtrans.fit(t_train, e_train)
@@ -294,6 +307,7 @@ def main(args=None):
             surv_test = surv_df.values.T
             time_coordinates = np.concatenate([np.array([0]), time_coordinates], 0)
             surv_test = np.concatenate([np.ones([surv_test.shape[0], 1]), surv_test], 1)
+            time_coordinates = np.sort(np.unique(time_coordinates))
         else:
             raise ValueError(f"Unknown model name: {args.model}")
 
