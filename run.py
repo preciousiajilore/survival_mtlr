@@ -52,7 +52,7 @@ def main(args=None):
     wandb.define_metric("AUC", summary="mean")
 
     args = wandb.config
-    data = pd.read_csv("data/filtered_dataset.csv")
+    data = pd.read_excel("/Users/preciousajilore/Documents/GitHub/torchmtlr/notebooks/first_test.csv")
     data.rename(columns={'datetofailurefu': 'time',
                          'failure': 'event'}, inplace=True)
     # columns that need to be standardized
