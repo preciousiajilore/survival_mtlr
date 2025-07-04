@@ -1,0 +1,39 @@
+{
+  "os": "macOS-15.4-arm64-arm-64bit",
+  "python": "3.12.1",
+  "startedAt": "2025-07-04T21:09:37.714957Z",
+  "args": [
+    "--model",
+    "DeepHit",
+    "--neurons",
+    "64",
+    "--norm",
+    "1",
+    "--dropout",
+    "0.3",
+    "--activation",
+    "ReLU",
+    "--n_epochs",
+    "100",
+    "--batch_size",
+    "32",
+    "--lr",
+    "0.001",
+    "--weight_decay",
+    "0.0001",
+    "--seed",
+    "42"
+  ],
+  "program": "/Users/preciousajilore/Documents/GitHub/torchmtlr/run.py",
+  "codePath": "run.py",
+  "git": {
+    "remote": "https://github.com/preciousiajilore/survival_mtlr.git",
+    "commit": "288232d564468c0996ed8d62d2d5ec8599fd41e8"
+  },
+  "email": "ajilore@ualberta.ca",
+  "root": "/Users/preciousajilore/Documents/GitHub/torchmtlr",
+  "host": "Preciouss-MacBook-Pro-364.local",
+  "username": "preciousajilore",
+  "executable": "/Users/preciousajilore/Documents/GitHub/torchmtlr/survivalenv/bin/python3",
+  "codePathLocal": "run.py"
+}

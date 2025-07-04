@@ -87,7 +87,7 @@ def main(args=None):
     data = data.dropna(subset=features + ['time', 'event']).reset_index(drop=True)
     
     data = data[data['time'] >= 0].reset_index(drop=True)
-    print('NaNs per column:\n', data.isna().sum())
+    #print('NaNs per column:\n', data.isna().sum())
     #print(data[data['time'] < 0])
 
     cols_wo_stdz = list(set(features).symmetric_difference(cols_stdz))  # including time and event
@@ -146,7 +146,7 @@ def main(args=None):
         t_test, e_test = data_test["time"].values, data_test["event"].values
         x_train_val = data_train_val.drop(["time", "event"], axis=1).values
         t_train_val, e_train_val = data_train_val["time"].values, data_train_val["event"].values
-
+        """
         print("NaNs after splitting:", data_train.isnull().sum())
         print("NaNs after mapping:", data_train.isnull().sum())
         print("Check values:", data_train.describe())
@@ -158,6 +158,7 @@ def main(args=None):
         print('e_train unique:', np.unique(e_train))
         print("Event distribution:", np.unique(e_train, return_counts=True))
         print("Time min/max:", np.min(t_train), np.max(t_train))
+        """
         # create time bins for discrete survival analysis models
         if args.model in ["MTLR", "DeepHit"]:
             discrete_bins = make_time_bins(t_train, event=e_train)
@@ -182,10 +183,12 @@ def main(args=None):
             surv_test = model.predict_survival(x_test)
             time_coordinates = model.time_bins
             time_coordinates = np.sort(np.unique(time_coordinates))
+            """
             print("time_coordinates:", time_coordinates)
             print("diffs:", np.diff(time_coordinates))
             print("duplicates:", len(time_coordinates) - len(np.unique(time_coordinates)))
             print("min/max:", time_coordinates.min(), time_coordinates.max())
+            """
         elif args.model == "MTLR":
             model = MTLR(
                 n_features=args.n_features,
@@ -372,7 +375,7 @@ def main(args=None):
         bs.append(brier_score)
         auc.append(auroc)
 
-
+        """
         wandb.log({'C-index': c_index,
                    'IBS': ibs_score,
                    'MAE_Hinge': hinge_abs,
@@ -381,15 +384,45 @@ def main(args=None):
                    'D-cal': p_value,
                    'BS': brier_score,
                    'AUC': auroc})
-    # print_performance(
-    #     path=path,
-    #     Cindex=ci,
-    #     IBS=ibs,
-    #     MAE_Hinge=mae_hinge,
-    #     MAE_PO=mae_po,
-    #     KM_cal=km_cal,
-    #     D_cal=d_cal,
-    # )
+        """
+        print(f"Fold {i+1} Results:")
+        print(f"  C-index: {c_index:.4f}")
+        print(f"  IBS: {ibs_score:.4f}")
+        print(f"  MAE_Hinge: {hinge_abs:.4f}")
+        print(f"  MAE_PO: {po_abs:.4f}")
+        print(f"  KM-cal: {km_cal_score:.4f}")
+        print(f"  D-cal: {p_value:.4f}")
+        print(f"  BS: {brier_score:.4f}")
+        print(f"  AUC: {auroc:.4f}\n")
+        wandb.log({
+            'C-index_mean': np.mean(ci),
+            'C-index_std': np.std(ci),
+            'IBS_mean': np.mean(ibs),
+            'IBS_std': np.std(ibs),
+            'MAE_Hinge_mean': np.mean(mae_hinge),
+            'MAE_Hinge_std': np.std(mae_hinge),
+            'MAE_PO_mean': np.mean(mae_po),
+            'MAE_PO_std': np.std(mae_po),
+            'KM-cal_mean': np.mean(km_cal),
+            'KM-cal_std': np.std(km_cal),
+            'D-cal_mean': np.mean(d_cal),
+            'D-cal_std': np.std(d_cal),
+            'BS_mean': np.mean(bs),
+            'BS_std': np.std(bs),
+            'AUC_mean': np.mean(auc),
+            'AUC_std': np.std(auc),
+        })
+        """
+        print_performance(
+            path=path,
+            Cindex=ci,
+            IBS=ibs,
+            MAE_Hinge=mae_hinge,
+            MAE_PO=mae_po,
+            KM_cal=km_cal,
+            D_cal=d_cal,
+        )
+        """
 
 
 if __name__ == '__main__':
