@@ -375,7 +375,7 @@ def main(args=None):
         bs.append(brier_score)
         auc.append(auroc)
 
-        """
+        
         wandb.log({'C-index': c_index,
                    'IBS': ibs_score,
                    'MAE_Hinge': hinge_abs,
@@ -384,7 +384,7 @@ def main(args=None):
                    'D-cal': p_value,
                    'BS': brier_score,
                    'AUC': auroc})
-        """
+        
         print(f"Fold {i+1} Results:")
         print(f"  C-index: {c_index:.4f}")
         print(f"  IBS: {ibs_score:.4f}")
@@ -394,24 +394,8 @@ def main(args=None):
         print(f"  D-cal: {p_value:.4f}")
         print(f"  BS: {brier_score:.4f}")
         print(f"  AUC: {auroc:.4f}\n")
-        wandb.log({
-            'C-index_mean': np.mean(ci),
-            'C-index_std': np.std(ci),
-            'IBS_mean': np.mean(ibs),
-            'IBS_std': np.std(ibs),
-            'MAE_Hinge_mean': np.mean(mae_hinge),
-            'MAE_Hinge_std': np.std(mae_hinge),
-            'MAE_PO_mean': np.mean(mae_po),
-            'MAE_PO_std': np.std(mae_po),
-            'KM-cal_mean': np.mean(km_cal),
-            'KM-cal_std': np.std(km_cal),
-            'D-cal_mean': np.mean(d_cal),
-            'D-cal_std': np.std(d_cal),
-            'BS_mean': np.mean(bs),
-            'BS_std': np.std(bs),
-            'AUC_mean': np.mean(auc),
-            'AUC_std': np.std(auc),
-        })
+         
+            
         """
         print_performance(
             path=path,
