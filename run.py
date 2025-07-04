@@ -156,6 +156,8 @@ def main(args=None):
         print('Sample e_train:', e_train[:5])
         print('t_train min/max:', np.min(t_train), np.max(t_train))
         print('e_train unique:', np.unique(e_train))
+        print("Event distribution:", np.unique(e_train, return_counts=True))
+        print("Time min/max:", np.min(t_train), np.max(t_train))
         # create time bins for discrete survival analysis models
         if args.model in ["MTLR", "DeepHit"]:
             discrete_bins = make_time_bins(t_train, event=e_train)
