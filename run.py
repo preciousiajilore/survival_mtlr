@@ -39,7 +39,7 @@ if not os.path.exists(folder):
 def main(args=None):
     if isinstance(args, argparse.Namespace):
         wandb.init(
-            project="UrethroplastySurvivalAnalysis",
+            project="UroLOGIC",
             config=args,
             name=args.model
         )
@@ -80,7 +80,7 @@ def main(args=None):
     'event',
      
     'ER visits', 'UTI  Post', 'UTI  recurring',
-
+    'foley',
     'time'
 
         ]
@@ -385,6 +385,8 @@ def main(args=None):
                    'D-cal': p_value,
                    'BS': brier_score,
                    'AUC': auroc})
+
+        """
         
         print(f"Fold {i+1} Results:")
         print(f"  C-index: {c_index:.4f}")
@@ -395,7 +397,7 @@ def main(args=None):
         print(f"  D-cal: {p_value:.4f}")
         print(f"  BS: {brier_score:.4f}")
         print(f"  AUC: {auroc:.4f}\n")
-         
+        """
             
         """
         print_performance(

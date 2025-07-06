@@ -1,0 +1,18 @@
+{
+  "n_exp": 1,
+  "seed": 0,
+  "model": "MTLR",
+  "neurons": [],
+  "norm": true,
+  "dropout": 0.05,
+  "activation": "ReLU",
+  "n_epochs": 1000,
+  "early_stop": false,
+  "batch_size": 32,
+  "lr": 0.0005,
+  "weight_decay": 0.001,
+  "verbose": true,
+  "n_features": 11,
+  "timestamp": "20250706_153418",
+  "device": "cpu"
+}
