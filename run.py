@@ -343,6 +343,7 @@ def main(args=None):
             evaler = QuantileRegEvaluator(quan_test, quan_levels, t_test, e_test, t_train_val, e_train_val,
                                           predict_time_method="Median", interpolation='Pchip')
         c_index = evaler.concordance(ties="All")[0]
+        #wandb.log({'C-index': c_index, 'epoch': epoch})
         ibs_score = evaler.integrated_brier_score(num_points=10, IPCW_weighted=False)
         hinge_abs = evaler.mae(method='Hinge', verbose=False, weighted=True)
         po_abs = evaler.mae(method='Pseudo_obs', verbose=False, weighted=False)
