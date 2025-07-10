@@ -38,7 +38,7 @@ def generate_parser():
 
     # --------------------------------
     # General experiment parameters
-    parser.add_argument('--n_exp', type=int, default=1,
+    parser.add_argument('--n_exp', type=int, default=10,
                         help="Number of experiments to run.")
     parser.add_argument('--seed', type=int, default=0,
                         help="Random seed.")
@@ -62,7 +62,7 @@ def generate_parser():
     # Training parameters, used for CoxPH, MTLR, DeepHit, CQRNN, LogNormalNN only.
     parser.add_argument('--n_epochs', type=int, default=5,
                         help="Maximum number of training epochs. ")
-    parser.add_argument('--early_stop', type=str_to_bool, default=False,
+    parser.add_argument('--early_stop', type=str_to_bool, default=True,
                         help="Whether to use early stop during training.")
     parser.add_argument('--batch_size', type=int, default=256,
                         help="Batch size for training.")

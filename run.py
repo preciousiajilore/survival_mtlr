@@ -84,6 +84,9 @@ def main(args=None):
     'time'
 
         ]
+    
+    #Castt feature values to float
+    data = data[features].astype("float32")
     data = data.dropna(subset=features + ['time', 'event']).reset_index(drop=True)
     
     data = data[data['time'] >= 0].reset_index(drop=True)
@@ -247,7 +250,9 @@ def main(args=None):
                                           dropout=args.dropout, activation=getattr(nn, args.activation))
             model = DeepHitSingle(net, tt.optim.Adam, device=args.device, alpha=0.2, sigma=0.1, duration_index=labtrans.cuts)
             model.label_transform = labtrans
-
+            
+            print(np.unique(e_val))
+            print(e_train.dtype, t_train.dtype)
             y_train = model.label_transform.transform(*(t_train, e_train))
             y_val = model.label_transform.transform(*(t_val, e_val))
 
@@ -350,7 +355,7 @@ def main(args=None):
         km_cal_score = evaler.km_calibration()
         p_value, _ = evaler.d_calibration()
         brier_score = evaler.brier_score(24, IPCW_weighted=False)
-        auroc = evaler.auc(24)
+        auroc = evaler.auc(24)  #When does she want to evaluate the AUC? currently 24 days might change
 
 
         fig, ax = plt.subplots(figsize=(6, 4))
