@@ -38,7 +38,7 @@ def generate_parser():
 
     # --------------------------------
     # General experiment parameters
-    parser.add_argument('--n_exp', type=int, default=10,
+    parser.add_argument('--n_exp', type=int, default=1,
                         help="Number of experiments to run.")
     parser.add_argument('--seed', type=int, default=0,
                         help="Random seed.")
@@ -48,7 +48,7 @@ def generate_parser():
                         help="Model name.")
     # --------------------------------
     # Network Structure parameters. Used for CoxPH, MTLR, DeepHit, CQRNN, LogNormalNN only.
-    parser.add_argument('--neurons', type=str_to_list, default=[],
+    parser.add_argument('--neurons', type=str_to_list, default=[64],
                         help="Hidden neurons in neural network. No space between numbers.")
     parser.add_argument('--norm', type=str_to_bool, default=True,
                         help="Whether to use batch norm in neural network.")
