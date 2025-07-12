@@ -23,6 +23,8 @@ wheels/
 pip-wheel-metadata/
 share/python-wheels/
 *.egg-info/
+wandb/
+runs/
 .installed.cfg
 *.egg
 MANIFEST
@@ -131,3 +133,4 @@ dmypy.json
 # Misc
 .#*
 .DS_Store
+/data/

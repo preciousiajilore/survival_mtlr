@@ -1,186 +1,177 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
-from utils import safe_log
-from lifelines import KaplanMeierFitter
-
+from utils import safe_log, safe_sqrt
+from utils.util_survival import KaplanMeierTorch
 
 def masked_logsumexp(
         x: torch.Tensor,
         mask: torch.Tensor,
-        dim: int = -1
+        dim: int=-1
 ) -> torch.Tensor:
     """Computes logsumexp over elements of a tensor specified by a mask (two-level)
     in a numerically stable way.
 
-    Parameters
-    ----------
-    x
-        The input tensor.
-    mask
-        A tensor with the same shape as `x` with 1s in positions that should
-        be used for logsumexp computation and 0s everywhere else.
-    dim
-        The dimension of `x` over which logsumexp is computed. Default -1 uses
-        the last dimension.
-
-    Returns
-    -------
-    torch.Tensor
-        Tensor containing the logsumexp of each row of `x` over `dim`.
+    :param x: torch.Tensor, input tensor, shape (n_batch, n_features)
+    :param mask: torch.Tensor, mask tensor, shape (n_batch, n_features)
+        1s in positions that should be used for logsumexp computation and 0s everywhere else.
+    :param dim: int, dimension to sum over
+        The dimension of `x` over which logsumexp is computed. Default -1 uses the last dimension.
+    :return: torch.Tensor, logsumexp over elements of a tensor specified by a mask
     """
     max_val, _ = (x * mask).max(dim=dim)
     max_val = torch.clamp_min(max_val, 0)
     return safe_log(torch.sum(torch.exp((x - max_val.unsqueeze(dim)) * mask) * mask, dim=dim)) + max_val
 
 
-class PartialLikelihood(nn.Module):
-    """Computes the negative log-likelihood of a batch of model predictions."""
+def crossing_loss(
+        y_pred: torch.Tensor
+):
+    """
+    Crossing loss for quantile regression, where adjacent quantiles are consecutive
+    https://stats.stackexchange.com/questions/249874/the-issue-of-quantile-curves-crossing-each-other
+    :param y_pred:  torch.Tensor, predicted quantiles, shape (n_batch, n_quantiles)
+    :return: torch.Tensor, crossing loss
+    """
+    margin=0.1
+    alpha=10
+    diffs = y_pred[:, 1:] - y_pred[:, :-1] # we would like diffs all to be +ve if not crossing
+    loss_cross = alpha*torch.mean(torch.maximum(torch.tensor(0.0), margin -diffs))
+    return loss_cross
 
-    def __init__(self, reduction="mean"):
+
+def quantile_loss(
+        y_pred: torch.Tensor,
+        y_true: torch.Tensor,
+        cen_indicator: torch.Tensor,
+        taus: torch.Tensor
+):
+    """
+    Standard checkmark / tilted pinball loss used for quantile regression,
+    but we also pass in cen_indicator and avoid calculating this over those datapoints
+
+    The code is borrowed from https://github.com/TeaPearce/Censored_Quantile_Regression_NN
+    :param y_pred: torch.Tensor, predicted quantiles, shape (n_batch, n_quantiles)
+    :param y_true: torch.Tensor, true event times, shape (n_batch, 1)
+    :param cen_indicator: torch.Tensor, censoring indicator, shape (n_batch, 1)
+    :param taus: torch.Tensor, quantile levels, shape (n_quantiles,)
+    :return:
+    """
+    tau_block = taus.repeat((cen_indicator.shape[0], 1))  # need this stacked in shape (n_batch, n_quantiles)
+    loss = torch.sum((cen_indicator < 1) * (y_pred - y_true) * ((1 - tau_block) - 1. * (y_pred < y_true)), dim=1)
+    loss = torch.mean(loss)
+    return loss
+
+
+class PartialLikelihood(nn.Module):
+    """Computes the partial likelihood loss for CoxPH model."""
+
+    def __init__(
+            self,
+            reduction: str="mean"
+    ):
         super(PartialLikelihood, self).__init__()
         assert reduction in ["mean", "sum"], "reduction must be one of 'mean', 'sum'"
         self.reduction = reduction
 
-    def forward(self, risk_pred, y_true):
+    def forward(
+            self,
+            risk_pred: torch.Tensor,
+            y_true: torch.Tensor
+    ):
         t_true, e_true = y_true[:, 0], y_true[:, 1]
-        risk_pred = risk_pred.reshape(-1, 1)
-        t_true = t_true.reshape(-1, 1)
-        e_true = e_true.reshape(-1, 1)
-        mask = torch.ones(t_true.shape[0], t_true.shape[0]).to(t_true.device)
-        mask[(t_true.T - t_true) > 0] = 0
-        max_risk = risk_pred.max()
-        log_loss = torch.exp(risk_pred - max_risk) * mask
-        log_loss = torch.sum(log_loss, dim=0)
-        log_loss = safe_log(log_loss).reshape(-1, 1) + max_risk
-        # Sometimes in the batch we got all censoring data, so the denominator gets 0 and throw nan.
-        # Solution: Consider increase the batch size. After all the nll should be performed on the whole dataset.
-        # Based on equation 2&3 in https://arxiv.org/pdf/1606.00931.pdf
-        nll = -torch.sum((risk_pred - log_loss) * e_true) / torch.sum(e_true)
+        # check whether e_true is all 0
+        if e_true.sum() == 0:
+            return torch.tensor(0.0).to(risk_pred.device)
+        else:
+            risk_pred = risk_pred.reshape(-1, 1)
+            t_true = t_true.reshape(-1, 1)
+            e_true = e_true.reshape(-1, 1)
+            mask = torch.ones(t_true.shape[0], t_true.shape[0]).to(t_true.device)
+            mask[(t_true.T - t_true) > 0] = 0
+            max_risk = risk_pred.max()
+            log_loss = torch.exp(risk_pred - max_risk) * mask
+            log_loss = torch.sum(log_loss, dim=0)
+            log_loss = safe_log(log_loss).reshape(-1, 1) + max_risk
+            # Sometimes in the batch we got all censoring data, so the denominator gets 0 and throw nan.
+            # Solution: Consider increase the batch size. After all the nll should be performed on the whole dataset.
+            # Based on equation 2&3 in https://arxiv.org/pdf/1606.00931.pdf
+            nll = -torch.sum((risk_pred - log_loss) * e_true) / torch.sum(e_true)
 
-        if self.reduction == "mean":
-            nll = nll / risk_pred.shape[0]
-        elif self.reduction == "sum":
-            nll = nll
+            if self.reduction == "mean":
+                nll = nll / risk_pred.shape[0]
+            elif self.reduction == "sum":
+                nll = nll
 
-        return nll
+            return nll
 
 
 class LikelihoodMTLR(nn.Module):
-    """Computes the negative log-likelihood of a batch of model predictions."""
+    """Computes the negative log-likelihood for MTLR model."""
 
-    def __init__(self, reduction="mean"):
+    def __init__(
+            self,
+            reduction: str="mean"
+    ):
         super(LikelihoodMTLR, self).__init__()
         assert reduction in ["mean", "sum"], "reduction must be one of 'mean', 'sum'"
         self.reduction = reduction
 
-    def forward(self, logits, target_encoded):
-        censored = target_encoded.sum(dim=1) > 1
-        nll_censored = masked_logsumexp(logits[censored], target_encoded[censored]).sum() if censored.any() else 0
-        nll_uncensored = (logits[~censored] * target_encoded[~censored]).sum() if (~censored).any() else 0
+    def forward(
+            self,
+            logits: torch.Tensor,
+            encoded_target: torch.Tensor
+    ):
+        censored = encoded_target.sum(dim=1) > 1
+        nll_censored = masked_logsumexp(logits[censored], encoded_target[censored]).sum() if censored.any() else 0
+        nll_uncensored = (logits[~censored] * encoded_target[~censored]).sum() if (~censored).any() else 0
 
         # the normalising constant
         norm = torch.logsumexp(logits, dim=1).sum()
 
         nll_total = -(nll_censored + nll_uncensored - norm)
         if self.reduction == "mean":
-            nll_total = nll_total / target_encoded.size(0)
+            nll_total = nll_total / encoded_target.size(0)
         elif self.reduction == "sum":
             nll_total = nll_total
 
         return nll_total
 
+class Likelihood(nn.Module):
+    """Computes the negative log-likelihood for continuous survival model."""
 
-def crossing_loss(y_pred):
-    # crossing loss
-    # y_pred is size (n_batch, n_quantiles)
-    # where adjacent quantiles are consecutive
-    # https://stats.stackexchange.com/questions/249874/the-issue-of-quantile-curves-crossing-each-other
-    loss_cross = 0
-    margin=0.1
-    alpha=10
-    diffs = y_pred[:, 1:] - y_pred[:, :-1] # we would like diffs all to be +ve if not crossing
-    # diffs = y_pred[:,1:-1] - y_pred[:,:-2] # we would like diffs all to be +ve if not crossing
-    loss_cross = alpha*torch.mean(torch.maximum(torch.tensor(0.0), margin -diffs))
-    return loss_cross
+    def __init__(
+            self,
+            reduction: str="mean"
+    ):
+        super(Likelihood, self).__init__()
+        assert reduction in ["mean", "sum"], "reduction must be one of 'mean', 'sum'"
+        self.reduction = reduction
 
-
-def quantile_loss(y_pred, y_true, cen_indicator, taus_torch):
-    # standard checkmark / tilted pinball loss used for quantile regression
-    # but we also pass in cen_indicator and avoid calculating this over those datapoints
-
-    tau_block = taus_torch.repeat((cen_indicator.shape[0], 1))  # need this stacked in shape (n_batch, n_quantiles)
-    loss = torch.sum((cen_indicator < 1) * (y_pred - y_true) * ((1 - tau_block) - 1. * (y_pred < y_true)), dim=1)
-    loss = torch.mean(loss)
-    # I thought about whether this should be /N (mean as here), or /N_observed, torch.sum(loss)/torch.sum(cen_indicator<1)
-    # and same for censored loss
-    # I confirmed it definitely should all be /N, so fine to use mean
-    return loss
-
-
-def cqrnn_loss(y_pred, y_true, taus_torch, IS_USE_CROSS_LOSS, y_max):
-    t_true, e_true = y_true[:, 0], y_true[:, 1]
-    t_true = t_true.reshape(-1, 1)
-    e_true = e_true.reshape(-1, 1)
-    c_true = 1 - e_true
-    # this is CQRNN loss as in paper
-    # y_pred is shape (n_batch, n_quantiles)
-    # y_true is shape (n_batch, 1)
-    # cen_indicator is shape (n_batch, 1)
-
-    # we've taken care to implement the loss without for loops, so things can be parallelised quickly
-    # but the downside is that this becomes harder to read and match up with the description in the paper
-    # so we also include cqrnn_loss_slowforloops()
-    # just note they both do the same thing
-
-    # 1) first do all observed data points, censored loss not required
-    # 2) second do all censored observations, no observed points
-
-    # use detach to figure out where to block
-    # first figure out closest quantile (do for all observations)
-    y_pred_detach = y_pred.detach()
-    # do we need detach()? yes I think so, otherwise loss is affected, though it's argmin so gradients prob don't flow anyway
-
-    # should do this outside loss really and subselect here if needed
-    tau_block = taus_torch.repeat((c_true.shape[0], 1))  # need this stacked in shape (n_batch, n_quantiles),
-
-    loss_obs = quantile_loss(y_pred, t_true, c_true, taus_torch)
-
-    # add in crossing loss
-    if IS_USE_CROSS_LOSS:
-        loss_obs += crossing_loss(y_pred)
-
-    # use argmin to get nearest quantile
-    torch_abs = torch.abs(
-        t_true - y_pred_detach[:, :-1])  # ignore the final quantile, which represents 1.0, so use [:-1]
-    estimated_quantiles = torch.max(
-        tau_block[:, :-1] * (torch_abs == torch.min(torch_abs, dim=1).values.view(torch_abs.shape[0], 1)), dim=1).values
-
-    # compute weights, eq 11, portnoy 2003
-    # want weights to be in shape (batch_size x n_quantiles-1)
-    weights = (tau_block[:, :-1] < estimated_quantiles.reshape(-1, 1)) * 1. + (
-                tau_block[:, :-1] >= estimated_quantiles.reshape(-1, 1)) * (
-                          tau_block[:, :-1] - estimated_quantiles.reshape(-1, 1)) / (
-                          1 - estimated_quantiles.reshape(-1, 1))
-
-    # now compute censored loss using
-    # weight* censored value, + (1-weight)* fictionally large value
-    y_max = y_max  # just use a really high value, larger than any data point we'll see
-    loss_cens = torch.sum((c_true > 0) *
-                          (weights * (y_pred[:, :-1] - t_true) * (
-                                      (1 - tau_block[:, :-1]) - 1. * (y_pred[:, :-1] < t_true)) +
-                           (1 - weights) * (y_pred[:, :-1] - y_max) * (
-                                       (1 - tau_block[:, :-1]) - 1. * (y_pred[:, :-1] < y_max)))
-                          , dim=1)
-    # could drop *(y_pred[:,:-1]<y_max) as this will always be true, but incl. for completeness
-    loss_cens = torch.mean(loss_cens)
-
-    return loss_obs + loss_cens
+    def forward(
+            self,
+            survival: torch.Tensor,
+            pdf: torch.Tensor,
+            y_true: torch.Tensor
+    ):
+        t_true, e_true = y_true[:, 0], y_true[:, 1]
+        loglikelihood = e_true * safe_log(pdf) + (1 - e_true) * safe_log(survival)
+        nll = -loglikelihood
+        if self.reduction == "mean":
+            nll = nll.mean(dim=-1)
+        elif self.reduction == "sum":
+            nll = nll.sum(dim=-1)
+        return nll
 
 
 class CensoredPinballLoss(nn.Module):
-    def __init__(self, quantiles, use_cross_loss: bool = False, reduction: str = "mean"):
+    """Computes the censored pinball loss for quantile regression."""
+
+    def __init__(
+            self,
+            quantiles: torch.Tensor,
+            use_cross_loss: bool = False,
+            reduction: str = "mean"
+    ):
         super(CensoredPinballLoss, self).__init__()
         self.quan_levels = quantiles.reshape([1, -1])
         self.reduction = reduction
@@ -196,7 +187,11 @@ class CensoredPinballLoss(nn.Module):
         print("Setting t_max to {} for CQRNN.".format(value))
         self._t_max = value
 
-    def forward(self, y_pred, y_true):
+    def forward(
+            self,
+            y_pred: torch.Tensor,
+            y_true: torch.Tensor
+    ):
         t_true, e_true = y_true[:, 0], y_true[:, 1]
         t_true = t_true.reshape(-1, 1)
         e_true = e_true.reshape(-1, 1)
@@ -212,7 +207,7 @@ class CensoredPinballLoss(nn.Module):
         # do we need detach()? yes I think so, otherwise loss is affected, though it's argmin so gradients prob don't flow anyway
 
         # should do this outside loss really and subselect here if needed
-        qaun_level_block = self.quan_levels.repeat((c_true.shape[0], 1)).to(y_true.device)
+        quan_level_block = self.quan_levels.repeat((c_true.shape[0], 1)).to(y_true.device)
 
         loss_obs = quantile_loss(y_pred, t_true, c_true, self.quan_levels)
 
@@ -223,234 +218,245 @@ class CensoredPinballLoss(nn.Module):
         # use argmin to get nearest quantile
         torch_abs = torch.abs(t_true - y_pred_detach[:, :])
         estimated_quantiles = torch.max(
-            qaun_level_block[:, :] * (
+            quan_level_block[:, :] * (
                         torch_abs == torch.min(torch_abs, dim=1).values.view(torch_abs.shape[0], 1)), dim=1).values
 
-        # compute weights, eq 11, portnoy 2003
+        # compute weights, eq 11, Stephen Portnoy 2003
         # want weights to be in shape (batch_size x n_quantiles-1)
-        weights = (qaun_level_block[:, :] < estimated_quantiles.reshape(-1, 1)) * 1. + (
-                qaun_level_block[:, :] >= estimated_quantiles.reshape(-1, 1)) * (
-                          qaun_level_block[:, :] - estimated_quantiles.reshape(-1, 1)) / (
+        weights = (quan_level_block[:, :] < estimated_quantiles.reshape(-1, 1)) * 1. + (
+                quan_level_block[:, :] >= estimated_quantiles.reshape(-1, 1)) * (
+                          quan_level_block[:, :] - estimated_quantiles.reshape(-1, 1)) / (
                           1 - estimated_quantiles.reshape(-1, 1))
 
         # now compute censored loss using
         # weight * censored value, + (1-weight) * fictionally large value
         loss_cens = torch.sum((c_true > 0) *
                               (weights * (y_pred[:, :] - t_true) * (
-                                      (1 - qaun_level_block[:, :]) - 1. * (y_pred[:, :] < t_true)) +
+                                      (1 - quan_level_block[:, :]) - 1. * (y_pred[:, :] < t_true)) +
                                (1 - weights) * (y_pred[:, :] - self.t_max) * (
-                                       (1 - qaun_level_block[:, :]) - 1. * (y_pred[:, :] < self.t_max)))
+                                       (1 - quan_level_block[:, :]) - 1. * (y_pred[:, :] < self.t_max)))
                               , dim=1)
         loss_cens = torch.mean(loss_cens)
 
         return loss_obs + loss_cens
 
 
-def compute_km_cal(average_survival_curve, t_grids, t_true, e_true):
-    device = average_survival_curve.device
-    t_range = max(t_grids) - min(t_grids)
+class OrthoNets(nn.Module):
+    """ Orthogonal Regularization for Hidden Weights."""
 
-    km_model = KaplanMeierFitter().fit(t_true.cpu(), e_true.cpu())
-    km_curve = torch.tensor(km_model.survival_function_at_times(t_grids.cpu().numpy()).values).to(device)
+    def __init__(
+            self,
+            input_size: int = 1,
+            alpha: float=1e-4,
+    ):
+        super(OrthoNets, self).__init__()
+        self.alpha = alpha
+        self.start_weight = torch.eye(input_size)
 
-    assert len(km_curve) == len(average_survival_curve), ("The length of the average survival curve and "
-                                                          "the KM curve should be the same.")
-    # sum over the joint time coordinates
-    km_cal = (1 / t_range) * torch.sum(torch.abs(average_survival_curve - km_curve))
+    def forward(
+            self,
+            model: nn.Module
+    ):
+        w_eps_mul = self.start_weight
+        for name, param in model.epsilon_net.named_parameters():
+            if 'weight' in name and 'linear' in name:
+                w_eps_mul = torch.mm(param, w_eps_mul)
+        # w_eps_mean = torch.mean(w_eps_mul, dim=0)
+        w_eps_mean = torch.mean(torch.abs(w_eps_mul), dim=0)
 
-    return km_cal
+        w_del_mul = self.start_weight
+        for name, param in model.kappa_net.named_parameters():
+            if 'weight' in name and 'linear' in name:
+                w_del_mul = torch.mm(param, w_del_mul)
+        # w_del_mean = torch.mean(w_del_mul, dim=0)
+        w_del_mean = torch.mean(torch.abs(w_del_mul), dim=0)
 
+        w_gam_mul = self.start_weight
+        for name, param in model.gamma_net.named_parameters():
+            if 'weight' in name and 'linear' in name:
+                w_gam_mul = torch.mm(param, w_gam_mul)
+        # w_gam_mean = torch.mean(w_gam_mul, dim=0)
+        w_gam_mean = torch.mean(torch.abs(w_gam_mul), dim=0)
 
-def compute_x_cal(cdf, e_true, gamma, n_bins=10):
-    device = cdf.device
-    is_alive = 1 - e_true.detach().clone()
-    is_alive[cdf > 1. - 1e-8] = 0
+        # orthogonal_loss = (torch.mean(torch.abs(w_eps_mean * w_del_mean)) +
+        #                    torch.mean(torch.abs(w_eps_mean * w_gam_mean)) +
+        #                    torch.mean(torch.abs(w_del_mean * w_gam_mean)))
+        orthogonal_loss = (torch.mean(w_eps_mean * w_del_mean) +
+                            torch.mean(w_eps_mean * w_gam_mean) +
+                            torch.mean(w_del_mean * w_gam_mean))
+        return self.alpha * orthogonal_loss
 
-    cdf = cdf.view(-1, 1)
-    # print(cdf[:200])
-    bin_width = 1.0 / n_bins
-    bin_indices = torch.arange(n_bins).view(1, -1).float().to(device)
-    bin_a = bin_indices * bin_width #+ 0.02*torch.rand(size=bin_indices.shape)
-    noise = 1e-6 / n_bins * torch.rand(size=bin_indices.shape).to(device)
-    cum_noise = torch.cumsum(noise, dim=1)
-    bin_width = torch.tensor([bin_width] * n_bins).to(device) + cum_noise
-    bin_b = bin_a + bin_width
-
-    bin_b_max = bin_b[:, -1]
-    bin_b = bin_b/bin_b_max
-    bin_a[:, 1:] = bin_b[:, :-1]
-    bin_width = bin_b - bin_a
-
-    # CENSORED POINTS
-    cdf_cens = cdf[is_alive.long() == 1]
-    upper_diff_for_soft_cens = bin_b - cdf_cens
-    # To solve optimization issue, we change the first left bin boundary to be -1.;
-    # we change the last right bin boundary to be 2.
-    bin_b[:, -1] = 2.
-    bin_a[:, 0] = -1.
-    lower_diff_cens = cdf_cens - bin_a # p - a
-    upper_diff_cens = bin_b - cdf_cens # b - p
-    diff_product_cens = lower_diff_cens * upper_diff_cens
-    # NON-CENSORED POINTS
-
-    # sigmoid(gamma*(p-a)*(b-p))
-    bin_index_ohe = torch.sigmoid(gamma * diff_product_cens)
-    exact_bins_next = torch.sigmoid(-gamma * lower_diff_cens)
-
-    EPS = 1e-13
-    right_censored_interval_size = 1 - cdf_cens + EPS
-
-    # each point's distance from its bin's upper limit
-    upper_diff_within_bin = (upper_diff_for_soft_cens * bin_index_ohe)
-
-    # assigns weights to each full bin that is larger than the point
-    # full_bin_assigned_weight = exact_bins*bin_width
-    # 1 / right_censored_interval_size is the density of the uniform over [F(c),1]
-    full_bin_assigned_weight = (exact_bins_next*bin_width.view(1,-1)/right_censored_interval_size.view(-1,1)).sum(0)
-    partial_bin_assigned_weight = (upper_diff_within_bin/right_censored_interval_size).sum(0)
-    assert full_bin_assigned_weight.shape == partial_bin_assigned_weight.shape, (full_bin_assigned_weight.shape, partial_bin_assigned_weight.shape)
-
-    # NON-CENSORED POINTS
-    cdf_uncens = cdf[is_alive.long() == 0]
-    # compute p - a and b - p
-    lower_diff = cdf_uncens - bin_a
-    upper_diff = bin_b - cdf_uncens
-    diff_product = lower_diff * upper_diff
-    assert lower_diff.shape == upper_diff.shape, (lower_diff.shape, upper_diff.shape)
-    assert lower_diff.shape == (cdf_uncens.shape[0], bin_a.shape[1])
-    # NON-CENSORED POINTS
-
-    # sigmoid(gamma*(p-a)*(b-p))
-    soft_membership = torch.sigmoid(gamma*diff_product)
-    fraction_in_bins = soft_membership.sum(0)
-    # print('soft_membership', soft_membership)
-
-    assert fraction_in_bins.shape == (n_bins, ), fraction_in_bins.shape
-
-    frac_in_bins = (fraction_in_bins + full_bin_assigned_weight + partial_bin_assigned_weight) / cdf.shape[0]
-    return torch.pow(frac_in_bins - bin_width, 2).sum()
+    def to(self, *args, **kwargs):
+        self.start_weight = self.start_weight.to(*args, **kwargs)
+        return super().to(*args, **kwargs)
 
 
-class LikelihoodLogNormal(nn.Module):
-    """Computes the negative log-likelihood of a batch of model predictions."""
+class OrthoReps(nn.Module):
+    # Orthogonal Regularization (Cosine similarity) for Representations
 
-    def __init__(self, reduction="mean", lam: float = 0.0, gamma: float = 10000, type: str = "x-cal"):
-        super(LikelihoodLogNormal, self).__init__()
-        assert reduction in ["mean", "sum"], "reduction must be one of 'mean', 'sum'"
-        self.reduction = reduction
-        self.lam = lam
-        self.gamma = gamma
-        self.type = type
+    def __init__(
+            self,
+            alpha: float=1e-4,
+    ):
+        super(OrthoReps, self).__init__()
+        self.alpha = alpha
 
-    def forward(self, logits, y_true):
-        t_true, e_true = y_true[:, 0], y_true[:, 1]
-        mu = logits[:, 0]
-        pre_log_sigma = logits[:, 1]
-        log_sigma = F.softplus(pre_log_sigma) - 0.5
-        sigma = log_sigma.clamp(max=10).exp()
-        sigma = sigma + 1e-8
+    def forward(
+            self,
+            reps: list[torch.Tensor],
+    ) -> torch.Tensor:
+        """
+        Calculate the Orthogonal Regularization for Representations.
+        :param reps: list of representations
+            Each representation should have the shape of (n_batch, n_dims).
+        :return: torch.Tensor, Orthogonal Regularization for Representations.
+        """
+        ortho_loss = 0
+        for i in range(len(reps)):
+            reps_1 = reps[i]
+            for j in range(i + 1, len(reps)):
+                reps_2 = reps[j]
+                # cosine similarity between the two groups of representations
+                cos_sim = torch.nn.functional.cosine_similarity(reps_1, reps_2, dim=1)
+                ortho_loss += torch.mean(cos_sim)
+        return self.alpha * ortho_loss
 
-        dist = torch.distributions.LogNormal(mu, sigma)
-        cdf = dist.cdf(t_true)
-        survival = 1.0 - cdf
-        t_grid = torch.unique(t_true[e_true == 1], sorted=True)
-        average_survival = torch.empty_like(t_grid)
-        for i in range(len(t_grid)):
-            average_survival[i] = 1.0 - dist.cdf(t_grid[i]).mean()
-        # cdf_all_points = dist.cdf(t_grid)
-        # survival_all_points = 1.0 - cdf_all_points
-        # average_survival = survival_all_points.mean()
-        log_pdf = dist.log_prob(t_true)
-        log_survival = safe_log(survival)
 
-        loglikelihood = (1 - e_true) * log_survival + e_true * log_pdf
+class IPM(nn.Module):
+    """
+    Integral probability metrics (IPM) loss to calculate the discrepancy of the empirical distribution of
+    confounder representation (kappa) between the event and censored groups.
+    """
 
-        nll = -1.0 * loglikelihood
-        if self.reduction == "mean":
-            nll = nll.mean(dim=-1)
-        elif self.reduction == "sum":
-            nll = nll.sum(dim=-1)
+    def __init__(
+            self,
+            method: str= 'mmd-linear',
+            alpha: float=1.0,
+    ):
+        """
+        Initialize the IPM loss.
+        :param method: str, method to calculate IPM loss, one of ['mmd-linear', 'mmd-rbf', 'wasserstein',
+            'mmd2-linear', 'mmd2-rbf', 'wasserstein2'].
+        :param alpha: float, weight for the IPM loss.
+        """
+        super(IPM, self).__init__()
+        self.alpha = alpha
+        self.gamma = None
+        self.method = method
+        self.km_e = None
+        self.km_c = None
+        self.fitted = False
 
-        if self.lam > 0:
-            if self.type == "x-cal":
-                cal_loss = compute_x_cal(cdf, e_true, self.gamma, n_bins=10)
-            elif self.type == "sfm":
-                cal_loss = compute_km_cal(average_survival, t_grid, t_true, e_true)
-            else:
-                raise ValueError("Invalid type for calibration loss.")
+    def fit(
+            self,
+            event_times: torch.Tensor,
+            event_indicators: torch.Tensor,
+            device: torch.device
+    ):
+        event_times, event_indicators = event_times.to(device), event_indicators.to(device)
+        self.km_e = KaplanMeierTorch(event_times, event_indicators)
+        self.km_c = KaplanMeierTorch(event_times, 1 - event_indicators)
+        self.fitted = True
+
+    def forward(
+            self,
+            rep: torch.Tensor,
+            t_batch: torch.Tensor,
+            e_batch: torch.Tensor,
+            event: bool = True
+    ):
+        """
+        Calculate the discrepancy of the empirical distribution of confounder representation (kappa) between the event
+        and censored groups.
+        :param rep: Tensor, confounder representations.
+        :param t_batch: Tensor, event time.
+        :param e_batch: Tensor, event indicator.
+        :param event: bool, whether to calculate the IPM loss for the event group.
+        :return: Tensor, discrepancy of the empirical distribution of confounder representation (kappa) between the event
+        and censored groups.
+        """
+        if not self.fitted:
+            raise ValueError("IPM loss must be fitted first.")
+
+        km = self.km_e if event else self.km_c
+        surv_prob_at_t = km.predict(t_batch)
+        # get weights with the rules:
+        # if event_indicators == 1, and surv_prob_at_event > 0.5 then weight = 1
+        # if event_indicators == 1, and surv_prob_at_event <= 0.5 then weight = 0
+        # if event_indicators == 0, and surv_prob_at_event > 0.5 then weight = (a - 0.5)/ a
+        # if event_indicators == 0, and surv_prob_at_event <= 0.5 then weight = 0
+        weights = torch.where((e_batch == 1) & (surv_prob_at_t > 0.5), 1.0, 0.0)
+        weights += torch.where((e_batch == 0) & (surv_prob_at_t > 0.5), (surv_prob_at_t - 0.5) / surv_prob_at_t, 0.0)
+
+        if self.method in ['mmd2-lin', 'mmd-lin']:
+            rep_1_avg = rep.T @ weights / weights.sum()
+            rep_2_avg = rep.T @ (1 - weights) / (1 - weights).sum()
+            ipm = torch.sum((rep_1_avg - rep_2_avg) ** 2)
+            if self.method == 'mmd-lin':
+                ipm = safe_sqrt(ipm)
+            ipm = self.alpha * ipm
+        elif self.method in ['mmd2-rbf', 'mmd-rbf']:
+            if self.gamma is None:  # set gamma using median heuristic at the first batch
+                sigma = median_heuristic(rep)
+                self.gamma = 1 / (2 * sigma ** 2)
+
+            rep_1 = rep[weights != 0]
+            rep_2 = rep[weights != 1]
+
+            weights_1 = weights[weights != 0] / torch.sum(weights)
+            weights_2 = (1 - weights[weights != 1]) / torch.sum(1 - weights)
+            weight_mat_11 = torch.outer(weights_1, weights_1)
+            weight_mat_12 = torch.outer(weights_1, weights_2)
+            weight_mat_22 = torch.outer(weights_2, weights_2)
+
+            k11 = rbf_kernel(rep_1, rep_1, gamma=self.gamma)
+            k12 = rbf_kernel(rep_1, rep_2, gamma=self.gamma)
+            k22 = rbf_kernel(rep_2, rep_2, gamma=self.gamma)
+
+            ipm = torch.sum(weight_mat_11 * k11) + torch.sum(weight_mat_22 * k22) - 2 * torch.sum(weight_mat_12 * k12)
+
+            if self.method == 'mmd-rbf':
+                ipm = safe_sqrt(ipm)
+            ipm = self.alpha * ipm
+        elif self.method in ['wasserstein', 'wasserstein2']:
+            raise NotImplementedError
         else:
-            cal_loss = 0
-        return nll + self.lam * cal_loss
+            raise ValueError(f"Invalid method: {self.method}")
+        return ipm
 
 
-class CRPS(nn.Module):
-    def __init__(self):
-        super(CRPS, self).__init__()
-        self.K = 32
+def rbf_kernel(x: torch.Tensor, y: torch.Tensor, gamma: float) -> torch.Tensor:
+    """
+    Compute the RBF (Gaussian) kernel between all pairs of x and y.
 
-    def I_ln(self, mu, scale, y, g):
-        # integral of CDF^2 of lognormal times g;
-        # using math from appendix A https://arxiv.org/pdf/1806.08324.pdf
+    :param x: Tensor of shape [N, D] (N samples, D dimensions).
+    :param y: Tensor of shape [M, D] (M samples, D dimensions).
+    :param gamma: Kernel width. gamma = 1 / (2 * sigma ** 2)
+    Returns:
+        torch.Tensor: A [N, M] tensor of RBF kernel values.
+    """
+    # Pairwise squared distances
+    # shape: [N, M]
+    pairwise_sq_dists = torch.cdist(x, y, p=2).pow(2)
 
-        # X ~ N(mu, sigma) === > exp(X) ~ LogNormal(mu, sigma);
-        # therefore, the Normal distribution we parameterize to compute the CDF uses the same sigma as scale
-        norm = torch.distributions.normal.Normal(mu, scale) # CHECKED
+    # RBF kernel
+    kxy = torch.exp(-pairwise_sq_dists * gamma)
+    return kxy
 
-        # approximation is as follows
-        # let phi( x ) be the cdf of normal evaluated at x.
-        # sum_k  0.5  * [ phi^2( log z_k) g(z_k) +  phi^2(log z_k-1) g(z_k-1) ] * [ z_k - z_k-1 ]
 
-        # grid points to approximate the integral
-        # creates K evenly spaced points from 1e-4 to 1
-        # grid_points = torch.tensor(np.linspace(1e-4, 1, self.K).astype(np.float32)).to(mu.device)
-        grid_points = torch.linspace(1e-4, 1, self.K).to(mu.device)
+def median_heuristic(x: torch.Tensor) -> float:
+    """
+    The default heuristic for the bandwidth of the RBF kernel.
 
-        # compute z_k-1 and \phi^2( log z_k-1) for k = 1; so z_0 and phi(z_0)
-        z_km1 = y*grid_points[0]
-        phi_km1 = norm.cdf(z_km1.log()).view(-1)
-        summand_km1 =  phi_km1.pow(2)*g(z_km1).view(-1)
+    1. Randomly sample a subset of points from your data.
+    2. Compute the pairwise distances for that subset.
+    3. Take the median of those distances as the bandwidth (sigma).
 
-        # return value
-        retval = 0.0
-
-        # loop over k from 1 to K-1, both included
-        for k in range(1, self.K):
-            z_k = y*grid_points[k]
-
-            # compute phi^2(log z_k)
-            phi_k = norm.cdf(z_k.log()).view(-1)
-            summand_k =  phi_k.pow(2)*g(z_k).view(-1)
-
-            # accumulate the summand 0.5 [ phi^2( log z_k) g(z_k) +  phi^2(log z_km1) g(z_km1) ] * [ z_k - z_km1 ]
-            retval = retval + 0.5*(summand_k + summand_km1)*(z_k - z_km1)
-
-            # update z_k-1 and phi^2(z_k-1)
-            z_km1 = z_k
-            summand_km1 = summand_k
-
-        return retval
-
-    def CRPS_surv_ln(self, mu, scale_lognormal, time, censor):
-        # argument sigma = s.exp is the scale of the logNormal distribution
-        Y = time
-        I = lambda y: self.I_ln(mu, scale_lognormal, y, lambda y_: y_*0 + 1)
-        I_ = lambda y: self.I_ln(-mu, scale_lognormal, 1/(y + 1e-4), lambda y_: (y_+1e-4).pow(-1))
-
-        crps = I(Y) + (1 - censor) * I_(Y)
-        return crps
-
-    def forward(self, logits, y_true):
-        t_true, e_true = y_true[:, 0], y_true[:, 1]
-        is_alive = 1 - e_true
-        mu = logits[:, 0]
-        pre_log_sigma = logits[:, 1]
-        log_sigma = F.softplus(pre_log_sigma) - 0.5
-        sigma = log_sigma.clamp(max=10).exp()
-        sigma = sigma + 1e-8
-
-        scale_lognormal = sigma
-        # what we use for CDF for dcal pred = torch.distributions.LogNormal(mu, scale_lognormal)
-        loss = self.CRPS_surv_ln(mu, scale_lognormal, t_true, is_alive)
-
-        loss = loss.mean()
-        return loss
+    Here, because the IPM calculation is done on each batch, which can be considered as a subset of the whole data,
+     we can use the median of the pairwise distances for that batch as the bandwidth.
+    """
+    # Compute pairwise distances
+    pairwise_dists = torch.cdist(x, x, p=2)
+    # Get the median of all pairwise distances
+    median_val = pairwise_dists.median()
+    return median_val.item()

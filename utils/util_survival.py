@@ -1,17 +1,23 @@
 from __future__ import division
-
+import warnings
+from dataclasses import dataclass, field, InitVar
 import torch
 import math
 import numpy as np
 import pandas as pd
-from scipy.interpolate import interp1d, PchipInterpolator
-from sklearn.utils import shuffle
+from itertools import chain
 from typing import Optional, Union
 from scipy import interpolate
+from scipy.interpolate import interp1d, PchipInterpolator
+from sklearn.utils import shuffle, indexable, _safe_indexing
+from sklearn.utils.validation import _num_samples
+from sklearn.model_selection._split import _validate_shuffle_split, train_test_split
 
 from skmultilearn.model_selection import iterative_train_test_split
+from iterstrat.ml_stratifiers import MultilabelStratifiedShuffleSplit
 
-from SurvivalEVAL.Evaluations.util import check_monotonicity, KaplanMeierArea, km_mean
+from SurvivalEVAL.Evaluations.util import check_monotonicity
+from SurvivalEVAL.NonparametricEstimator.SingleEvent import KaplanMeierArea, km_mean
 from SurvivalEVAL.Evaluations.custom_types import NumericArrayLike
 
 
@@ -93,9 +99,9 @@ def make_mono_quantiles(
         boostrap_samples = np.random.uniform(0, 1, num_bs)
         for idx in need_rearrange:
             inter_lin = interpolate.interp1d(np.r_[quantiles, 1], np.r_[quan_preds[idx, :], extention_at_1[idx]],
-                                             kind='linear')
+                                             kind='linear', assume_sorted=True)
             bootstrap_qf = inter_lin(boostrap_samples)
-            quan_preds[idx, :] = np.percentile(bootstrap_qf, 100 * quantiles)
+            quan_preds[idx, :] = np.quantile(bootstrap_qf, quantiles)
         #
         # method 3: balance between time and memory, but you have to find the right batch size
         # need_rearrange = np.where(np.any((np.sort(quan_preds, axis=1) != quan_preds), axis=1))[0]
@@ -118,7 +124,7 @@ def make_mono_quantiles(
     # To avoid this, we add a small value to each quantile
     small_values = np.arange(0, quantiles.size) * 1e-10
     quan_preds = quan_preds + small_values
-
+    quan_preds[:, 0] = 0
     return quantiles, quan_preds
 
 
@@ -373,17 +379,31 @@ def reformat_survival(
 
 def extract_survival(
         df: pd.DataFrame,
-        discrete_bins: Optional[NumericArrayLike] = None
+        discrete_bins_e: Optional[NumericArrayLike] = None,
+        discrete_bins_c: Optional[NumericArrayLike] = None,
+        include_censor_label: Optional[bool] = False
 ) -> (torch.Tensor, torch.Tensor, np.ndarray, np.ndarray):
     x = torch.from_numpy(df.drop(columns=['time', 'event']).values)
     t, e = torch.from_numpy(df['time'].values), torch.from_numpy(df['event'].values)
-    if discrete_bins is not None:
-        # discrete time models
-        y = encode_survival(t, e, discrete_bins)
+    if include_censor_label:
+        c = 1 - e
+        if (discrete_bins_c is not None) and (discrete_bins_e is not None):
+            # discrete time models
+            yc = encode_survival(t, c, discrete_bins_c)
+            ye = encode_survival(t, e, discrete_bins_e)
+        else:
+            # continuous time models
+            yc = torch.stack([t, c], dim=1)
+            ye = torch.stack([t, e], dim=1)
+        return x, ye, yc, t, e
     else:
-        # continuous time models
-        y = torch.stack([t, e], dim=1)
-    return x, y, t, e
+        if discrete_bins_e is not None:
+            # discrete time models
+            y = encode_survival(t, e, discrete_bins_e)
+        else:
+            # continuous time models
+            y = torch.stack([t, e], dim=1)
+        return x, y, t, e
 
 
 def encode_survival(
@@ -518,16 +538,79 @@ def survival_stratified_cv(
     return cross_validation_set
 
 
-def multilabel_train_test_split(x, y, test_size, random_state=None):
+def multilabel_train_test_split1(
+        x,
+        y,
+        test_size,
+        random_state=None
+):
     """Iteratively stratified train/test split
     (Add random_state to scikit-multilearn iterative_train_test_split function)
     See this paper for details: https://link.springer.com/chapter/10.1007/978-3-642-23808-6_10
-    # TODO: the current function `iterative_train_test_split` is not efficient, need to find a better way to do this.
+
+    The function `iterative_train_test_split` is not efficient for large datasets so we have built another function
+    multilabel_train_test_split2
     See https://github.com/scikit-multilearn/scikit-multilearn/issues/202
     """
+    warnings.warn("This function is deprecated. Please use multilabel_train_test_split2 instead.",
+                  DeprecationWarning)
     x, y = shuffle(x, y, random_state=random_state)
     x_train, y_train, x_test, y_test = iterative_train_test_split(x, y, test_size=test_size)
     return x_train, y_train, x_test, y_test
+
+
+def multilabel_train_test_split2(
+        *arrays,
+        test_size=None,
+        train_size=None,
+        random_state=None,
+        stratify=None,
+        shuffle=True
+):
+    """
+    Splits arrays or matrices into random train and test subsets for multilabel data.
+
+    This function is similar to sklearn.model_selection.train_test_split,
+    but uses a multilabel-aware split method based on:
+    'Sechidis K., Tsoumakas G., Vlahavas I. (2011)  On the Stratification of Multi-Label Data'.
+    """
+    # If no stratification is requested, fall back to the standard train/test split
+    if stratify is None:
+        return train_test_split(
+            *arrays,
+            test_size=test_size,
+            train_size=train_size,
+            random_state=random_state,
+            shuffle=shuffle,
+            stratify=None
+        )
+
+    assert shuffle, "Stratified train/test split is not implemented for shuffle=False"
+
+    # Convert all arrays to indexable (lists, numpy arrays, dataframes, etc.)
+    arrays = indexable(*arrays)
+    n_samples = _num_samples(arrays[0])
+
+    # Validate and compute the number of train and test samples
+    n_train, n_test = _validate_shuffle_split(n_samples, test_size, train_size, default_test_size=0.25)
+
+    # Prepare the multilabel-aware splitter
+    splitter = MultilabelStratifiedShuffleSplit(
+        train_size=n_train,
+        test_size=n_test,
+        random_state=random_state
+    )
+
+    # Get the first (and only) split from the iterator
+    train_idx, test_idx = next(splitter.split(X=arrays[0], y=stratify))
+
+    # Return train/test slices for each array
+    return list(
+        chain.from_iterable(
+            (_safe_indexing(a, train_idx), _safe_indexing(a, test_idx))
+            for a in arrays
+        )
+    )
 
 
 def survival_data_split(
@@ -561,14 +644,19 @@ def survival_data_split(
     else:
         raise ValueError("unrecognized stratify policy")
 
-    x_train_val, y_train_val, x_test, _ = multilabel_train_test_split(x, y=stra_lab, test_size=frac_test,
-                                                                      random_state=random_state)
+    # x_train_val, y_train_val, x_test, _ = multilabel_train_test_split1(x, y=stra_lab, test_size=frac_test,
+    #                                                                    random_state=random_state)
+    x_train_val, x_test, y_train_val, _ = multilabel_train_test_split2(
+        x, stra_lab, stratify=stra_lab, test_size=frac_test, random_state=random_state)
     if frac_val == 0:
         x_train, x_val = x_train_val, []
     else:
-        x_train, _, x_val, _ = multilabel_train_test_split(x_train_val, y=y_train_val,
-                                                           test_size=frac_val / (frac_val + frac_train),
-                                                           random_state=random_state)
+        # x_train, _, x_val, _ = multilabel_train_test_split1(x_train_val, y=y_train_val,
+        #                                                    test_size=frac_val / (frac_val + frac_train),
+        #                                                    random_state=random_state)
+        x_train, x_val, _, _ = multilabel_train_test_split2(
+            x_train_val, y_train_val, stratify=y_train_val, test_size=frac_val / (frac_val + frac_train),
+            random_state=random_state)
     df_train = pd.DataFrame(data=x_train, columns=columns)
     df_val = pd.DataFrame(data=x_val, columns=columns)
     df_test = pd.DataFrame(data=x_test, columns=columns)
@@ -622,3 +710,87 @@ def survival_to_quantile(surv_prob, time_coordinates, quantile_levels, interpola
     assert np.all(quantile_predictions >= 0), "Quantile predictions contain negative."
     assert check_monotonicity(quantile_predictions), "Quantile predictions are not monotonic."
     return quantile_predictions
+
+
+@dataclass
+class KaplanMeierTorch:
+    """
+    A PyTorch-based implementation of the Kaplan-Meier estimator.
+    """
+    event_times: InitVar[torch.Tensor]
+    event_indicators: InitVar[torch.Tensor]
+
+    survival_times: torch.Tensor = field(init=False)
+    population_count: torch.Tensor = field(init=False)
+    events: torch.Tensor = field(init=False)
+    survival_probabilities: torch.Tensor = field(init=False)
+    cumulative_dens: torch.Tensor = field(init=False)
+    probability_dens: torch.Tensor = field(init=False)
+
+    def __post_init__(self, event_times: torch.Tensor, event_indicators: torch.Tensor):
+        # Ensure event_times and event_indicators are 1D tensors
+        event_times = event_times.flatten()
+        event_indicators = event_indicators.flatten()
+        device = event_times.device
+        self.device = device
+
+        # ---------------------------------------------------------------------
+        # 1. Replicate np.lexsort((event_indicators, event_times))
+        #
+        # np.lexsort((a, b)) sorts primarily by b, then by a.
+        # That is: index = sorted(range(len)), key=lambda i: (event_times[i], event_indicators[i])
+        # We can implement this using Python's sorted with a custom key:
+        # ---------------------------------------------------------------------
+        sorted_index = sorted(
+            range(len(event_times)),
+            key=lambda i: (event_times[i].item(), event_indicators[i].item())
+        )
+        sorted_index = torch.tensor(sorted_index, dtype=torch.long, device=device)
+
+        # Reorder tensors by this index
+        event_times_sorted = event_times[sorted_index]
+        event_indicators_sorted = event_indicators[sorted_index]
+
+        unique_times, counts = torch.unique(event_times_sorted, sorted=True, return_counts=True)
+
+        self.survival_times = unique_times
+        # cumsum from the back
+        flipped_counts = torch.flip(counts, dims=[0])
+        cumsum_flipped = torch.cumsum(flipped_counts, dim=0)
+        self.population_count = torch.flip(cumsum_flipped, dims=[0])
+
+        cumsum_counts = torch.cumsum(counts, dim=0)
+        # event_counter: [0, c1, c1+c2, ..., sum up to the second-to-last]
+        event_counter = torch.cat(
+            [torch.tensor([0], dtype=torch.long, device=device), cumsum_counts[:-1]]
+        )
+
+        events_list = []
+        for i in range(len(counts)):
+            start = event_counter[i].item()
+            end = cumsum_counts[i].item()   # exclusive
+            events_list.append(event_indicators_sorted[start:end].sum())
+
+        self.events = torch.stack(events_list)
+
+        event_ratios = 1.0 - (self.events.float() / self.population_count.float())
+        self.survival_probabilities = torch.cumprod(event_ratios, dim=0)
+
+        self.cumulative_dens = 1.0 - self.survival_probabilities
+
+        # We append a final 1.0, then compute the difference
+        appended = torch.cat([self.cumulative_dens, torch.tensor([1.0], device=device)])
+        self.probability_dens = appended[1:] - appended[:-1]
+
+    def predict(self, prediction_times: torch.Tensor) -> torch.Tensor:
+        # Ensure prediction_times is a 1D tensor
+        prediction_times = prediction_times.flatten()
+
+        probability_index = torch.searchsorted(self.survival_times, prediction_times, right=False)
+        max_ix = self.survival_times.size(0)
+        probability_index = torch.where(probability_index >= max_ix, max_ix - 1, probability_index)
+
+        expanded_probs = torch.cat([torch.tensor([1.0], device=self.device), self.survival_probabilities])
+        probabilities = expanded_probs[probability_index]
+
+        return probabilities
