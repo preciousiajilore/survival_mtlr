@@ -55,36 +55,56 @@ def main(args=None):
     wandb.define_metric("AUC", summary="mean")
 
     args = wandb.config
-    data = pd.read_csv("/Users/preciousajilore/Documents/GitHub/torchmtlr/notebooks/without_neg.csv")
+    data = pd.read_csv("/Users/preciousajilore/Documents/GitHub/torchmtlr/notebooks/x_before_surgery.csv")
     data.rename(columns={'time_to_event': 'time',
-                         'Failure': 'event'}, inplace=True)
+                         'failure': 'event'}, inplace=True)
     # columns that need to be standardized
     """
-      Index(['Age_calc', 'Date of Surgery', 'COPD', 'Diabetes', 'COPD.1', 'Smoker',
-       'Abx', 'Transection', 'Failure', 'fu', 'datetofailureorfollowup',
-       'ER visits', 'UTI  Post', 'UTI  recurring', 'foley', 'failure date',
-       'time_to_event'],
+      Index(['Unnamed: 0', 'stxlocation', 'distal', 'penile', 'stxetiology',
+       'stxlength', '#strictures', 'charlsons', 'cormorbidity', 'diabetes',
+       'copd', 'smoker', 'bmi35+', 'bmiexact', 'prevprocedure',
+       '#prevprocedures', 'cysto', 'open', 'ordate', 'urine', 'failure',
+       'patent', 'satisfaction', 'datetofailureorfollowup', 'Date of Surgery',
+       'time_to_event', 'fu', 'open_clean', 'stxlength_1', 'stxlength_2',
+       'stxetiology_1', 'stxetiology_2', 'stxlocation_1', 'stxlocation_2'],
       dtype='object')
     
     """
-    cols_stdz = ['Age_calc', 'ER visits']
-    #features = data.columns.to_list()
-    features = [
-    'Age_calc',    # keep
-    'COPD',        # keep
-    'Diabetes',
-    'COPD.1',    # keep
-    'Smoker',      # keep
-    'Abx',         # keep
-    'Transection', # keep
-    'event',
-     
-    'ER visits', 'UTI  Post', 'UTI  recurring',
-    'foley',
-    'time'
+    
 
+    cols_stdz = ['bmiexact','stxlength_1', 'stxlength_2']
+    #features = data.columns.to_list()
+    
+    features = [
+    'distal', 
+    'penile',
+    '#strictures', 
+    'charlsons', 
+    'cormorbidity', 
+    'diabetes',
+    'copd', 
+    'smoker', 
+    'prevprocedure',
+    '#prevprocedures',
+    'cysto', 
+
+  
+    'event',
+    'patent',
+
+    'time',
+    'open_clean', 
+    'stxlength_1', 
+    'stxlength_2',
+    'stxetiology_1',
+    'stxetiology_2',
+    'stxlocation_1', 
+    'stxlocation_2'
         ]
     
+    for col in features:
+        print(col, data[col].unique())
+
     #Castt feature values to float
     data = data[features].astype("float32")
     data = data.dropna(subset=features + ['time', 'event']).reset_index(drop=True)
