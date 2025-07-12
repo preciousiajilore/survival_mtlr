@@ -87,7 +87,7 @@ def main(args=None):
     'prevprocedure',
     '#prevprocedures',
     'cysto', 
-
+    'bmiexact',
   
     'event',
     'patent',
@@ -102,9 +102,14 @@ def main(args=None):
     'stxlocation_2'
         ]
     
-    for col in features:
-        print(col, data[col].unique())
+    #for col in features:
+        #print(col, data[col].unique())
+    data.replace('?', np.nan, inplace=True)
 
+    for col in features:
+        # Only replace in object (string) columns to avoid breaking real floats
+        if data[col].dtype == object:
+            data[col] = data[col].str.replace(',', '.')
     #Castt feature values to float
     data = data[features].astype("float32")
     data = data.dropna(subset=features + ['time', 'event']).reset_index(drop=True)
@@ -119,8 +124,8 @@ def main(args=None):
     columns_transform = stdz + wo_stdz
 
     #Debugging
-    print(data[features].isnull().sum())
-    print(data[features].dtypes)
+    #print(data[features].isnull().sum())
+    #print(data[features].dtypes)
 
     if args.early_stop:
         pct_train = 0.4
@@ -202,6 +207,8 @@ def main(args=None):
                       lr=args.lr, lr_min=1e-3 * args.lr, weight_decay=args.weight_decay, early_stop=args.early_stop,
                       fname=folder + f'/{model.__class__.__name__}', verbose=args.verbose)
             
+         
+
             x_test = torch.from_numpy(x_test).float().to(device)
             surv_test = model.predict_survival(x_test)
             time_coordinates = model.time_bins
