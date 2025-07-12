@@ -76,6 +76,25 @@ def main(args=None):
     #features = data.columns.to_list()
     
     features = [
+
+       'stxlength_1', 
+       'stxlength_2', 
+       'stxlocation_0',
+       'stxlocation_1', 
+       'stxlocation_2', 
+       'stxlocation_3',
+       'stxlocation_4',
+       'stxlocation_5', 
+       'stxlocation_6', 
+       'stxetiology_0', 
+       'stxetiology_1',
+       'stxetiology_18', 
+       'stxetiology_2', 
+       'stxetiology_3', 
+       'stxetiology_4',
+       'stxetiology_5', 
+       'stxetiology_6',
+
     'distal', 
     'penile',
     '#strictures', 
@@ -90,16 +109,11 @@ def main(args=None):
     'bmiexact',
   
     'event',
-    'patent',
+    
 
     'time',
     'open_clean', 
-    'stxlength_1', 
-    'stxlength_2',
-    'stxetiology_1',
-    'stxetiology_2',
-    'stxlocation_1', 
-    'stxlocation_2'
+
         ]
     
     #for col in features:
