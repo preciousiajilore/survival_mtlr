@@ -63,19 +63,22 @@ def main(args=None):
     wandb.define_metric("AUC", summary="mean")
 
     args = wandb.config
-    data = pd.read_csv("data/x_before_surgery.csv")
+    data = pd.read_csv("/Users/preciousajilore/Documents/GitHub/torchmtlr/notebooks/x_before_surgery.csv")
     data.replace('?', np.nan, inplace=True)
     data.rename(columns={'time_to_event': 'time',
                          'failure': 'event'}, inplace=True)
     # columns that need to be standardized
     """
-      Index(['Unnamed: 0', 'stxlocation', 'distal', 'penile', 'stxetiology',
-       'stxlength', '#strictures', 'charlsons', 'cormorbidity', 'diabetes',
-       'copd', 'smoker', 'bmi35+', 'bmiexact', 'prevprocedure',
-       '#prevprocedures', 'cysto', 'open', 'ordate', 'urine', 'failure',
-       'patent', 'satisfaction', 'datetofailureorfollowup', 'Date of Surgery',
-       'time_to_event', 'fu', 'open_clean', 'stxlength_1', 'stxlength_2',
-       'stxetiology_1', 'stxetiology_2', 'stxlocation_1', 'stxlocation_2'],
+      Index(['Unnamed: 0', 'distal', 'penile', 'stxlength', '#strictures',
+       'charlsons', 'cormorbidity', 'diabetes', 'copd', 'smoker', 'bmi35+',
+       'bmiexact', 'prevprocedure', '#prevprocedures', 'cysto', 'open',
+       'ordate', 'urine', 'failure', 'patent', 'satisfaction',
+       'datetofailureorfollowup', 'Date of Surgery', 'fu', 'time_to_event',
+       'open_clean', 'stxlength_1', 'stxlength_2', 'stxlocation_0',
+       'stxlocation_1', 'stxlocation_2', 'stxlocation_3', 'stxlocation_4',
+       'stxlocation_5', 'stxlocation_6', 'stxetiology_0', 'stxetiology_1',
+       'stxetiology_18', 'stxetiology_2', 'stxetiology_3', 'stxetiology_4',
+       'stxetiology_5', 'stxetiology_6'],
       dtype='object')
     
     """
@@ -85,6 +88,21 @@ def main(args=None):
     #features = data.columns.to_list()
     
     features = [
+    'stxlocation_0',
+    'stxlocation_1', 
+    'stxlocation_2', 
+    'stxlocation_3',
+    'stxlocation_4',
+    'stxlocation_5', 
+    'stxlocation_6',
+    'stxetiology_0', 
+    'stxetiology_1',
+    'stxetiology_18', 
+    'stxetiology_2', 
+    'stxetiology_3', 
+    'stxetiology_4',
+    'stxetiology_5', 
+    'stxetiology_6',
     'bmiexact',
     'stxlength_1',
     'stxlength_2',
@@ -102,14 +120,11 @@ def main(args=None):
 
   
     'event',
-    'patent',
+
 
     'time',
     'open_clean', 
-    'stxetiology_1',
-    'stxetiology_2',
-    'stxlocation_1', 
-    'stxlocation_2'
+    
         ]
     
     for col in features:
@@ -171,7 +186,8 @@ def main(args=None):
         data_train = mapper_df.fit_transform(data_train).astype('float32')[features]
         data_val = mapper_df.transform(data_val).astype('float32')[features] if not data_val.empty else data_val
         data_test = mapper_df.transform(data_test).astype('float32')[features]
-
+        
+        #feature selection
         if args.fs == "lasso_cox":
             data_train, data_val, data_test = coxen_fs(data_train, data_val, data_test, verbose=args.verbose)
         elif args.fs == "cox_score_test":
