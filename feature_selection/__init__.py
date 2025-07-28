@@ -7,6 +7,8 @@ from sklearn.model_selection import GridSearchCV, KFold
 from sklearn.pipeline import make_pipeline
 import warnings
 import matplotlib.pyplot as plt
+from numpy import logspace
+
 
 
 def unicox_fs(
@@ -64,8 +66,9 @@ def coxen_fs(
 
     best_cindex = 0
     for l1_ratio in tqdm(l1_ratio_list, total=len(l1_ratio_list), disable=verbose):
+       
         coxnet_pipe = make_pipeline(
-            CoxnetSurvivalAnalysis(l1_ratio=l1_ratio, alpha_min_ratio='auto', max_iter=1000)
+            CoxnetSurvivalAnalysis(l1_ratio=l1_ratio, alpha_min_ratio='auto', max_iter=10000)
         )
         warnings.simplefilter("ignore", UserWarning)
         coxnet_pipe.fit(X, y)

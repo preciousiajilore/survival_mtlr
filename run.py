@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -44,6 +45,8 @@ DISCRETE_MODELS = [
     "DeepHit", "Nnet-survival", "IWSG"]
 
 
+
+
 def main(args=None):
     if isinstance(args, argparse.Namespace):
         wandb.init(
@@ -63,74 +66,70 @@ def main(args=None):
     wandb.define_metric("AUC", summary="mean")
 
     args = wandb.config
-    data = pd.read_csv("/Users/preciousajilore/Documents/GitHub/torchmtlr/notebooks/x_before_surgery.csv")
+    data = pd.read_csv("/Users/preciousajilore/Documents/GitHub/torchmtlr/notebooks/prepostop.csv")
+    def bracket_to_num(val):
+        if isinstance(val, str) and re.fullmatch(r"\[\d+\]", val):
+            return int(val.strip("[]"))
+        return val
+    
+    
+     
+    
     data.replace('?', np.nan, inplace=True)
     data.rename(columns={'time_to_event': 'time',
                          'failure': 'event'}, inplace=True)
     # columns that need to be standardized
     """
-      Index(['Unnamed: 0', 'distal', 'penile', 'stxlength', '#strictures',
-       'charlsons', 'cormorbidity', 'diabetes', 'copd', 'smoker', 'bmi35+',
-       'bmiexact', 'prevprocedure', '#prevprocedures', 'cysto', 'open',
-       'ordate', 'urine', 'failure', 'patent', 'satisfaction',
-       'datetofailureorfollowup', 'Date of Surgery', 'fu', 'time_to_event',
-       'open_clean', 'stxlength_1', 'stxlength_2', 'stxlocation_0',
-       'stxlocation_1', 'stxlocation_2', 'stxlocation_3', 'stxlocation_4',
-       'stxlocation_5', 'stxlocation_6', 'stxetiology_0', 'stxetiology_1',
-       'stxetiology_18', 'stxetiology_2', 'stxetiology_3', 'stxetiology_4',
-       'stxetiology_5', 'stxetiology_6'],
+      Index(['distal', 'penile', 
+       '#strictures', 'charlsons', 'cormorbidity', 'diabetes', 'copd',
+       'smoker', 'bmi35+', 'prevprocedure', '#prevprocedures',  'open',
+       'urine', 'stx_length_1', 'stx_length_2', 'stxetiology_0',
+       'stxetiology_1', 'stxetiology_2', 'stxetiology_3', 'stxetiology_4',
+       'stxetiology_5', 'stxetiology_6', 'stxlocation_0', 'stxlocation_1',
+       'stxlocation_2', 'stxlocation_3', 'stxlocation_4', 'stxlocation_5',
+       'stxlocation_6', 'stx_length_1', 'stx_length_2', 'cysto_0.0',
+       'cysto_1.0', 'cysto_2.0', 'cysto_3.0', 'abx', 'erectilepre', 'uti',
+       'los(days)', 'spc', 'tissue', 'transection', 'urethroplasty',
+       'cathremoval', 'cathdays', 'tissue_0.0', 'tissue_1.0', 'tissue_2.0',
+       'tissue_3.0', 'tissue_4.0', 'tissue_5.0', 'urethroplasty_1.0',
+       'urethroplasty_2.0', 'urethroplasty_3.0', 'urethroplasty_4.0',
+       'urethroplasty_5.0', 'urethroplasty_6.0', 'failure', 'time_to_event'],
       dtype='object')
-    
     """
     
 
-    cols_stdz = ['bmiexact','stxlength_1', 'stxlength_2']
+    cols_stdz = ['stx_length_1', 'stx_length_2']
     #features = data.columns.to_list()
     
     features = [
-    'stxlocation_0',
-    'stxlocation_1', 
-    'stxlocation_2', 
-    'stxlocation_3',
-    'stxlocation_4',
-    'stxlocation_5', 
-    'stxlocation_6',
-    'stxetiology_0', 
-    'stxetiology_1',
-    'stxetiology_18', 
-    'stxetiology_2', 
-    'stxetiology_3', 
-    'stxetiology_4',
-    'stxetiology_5', 
-    'stxetiology_6',
-    'bmiexact',
-    'stxlength_1',
-    'stxlength_2',
-    'distal', 
-    'penile',
-    '#strictures', 
-    'charlsons', 
-    'cormorbidity', 
-    'diabetes',
-    'copd', 
-    'smoker', 
-    'prevprocedure',
-    '#prevprocedures',
-    'cysto', 
+   # drop event/time
+       'distal', 'penile', 
+       '#strictures', 'charlsons', 'cormorbidity', 'diabetes', 'copd',
+       'smoker', 'bmi35+', 'prevprocedure', '#prevprocedures','open',
+       'urine', 'stxetiology_0',
+       'stxetiology_1', 'stxetiology_2', 'stxetiology_3', 'stxetiology_4',
+       'stxetiology_5', 'stxetiology_6', 'stxlocation_0', 'stxlocation_1',
+       'stxlocation_2', 'stxlocation_3', 'stxlocation_4', 'stxlocation_5',
+       'stxlocation_6', 'stx_length_1', 'stx_length_2', 'cysto_0.0',
+       'cysto_1.0', 'cysto_2.0', 'cysto_3.0', 'abx', 'erectilepre', 'uti',
+       'los(days)', 'spc', 'transection',
+       'tissue_0.0', 'tissue_1.0', 'tissue_2.0',
+       'tissue_3.0', 'tissue_4.0', 'tissue_5.0', 'urethroplasty_1.0',
+       'urethroplasty_2.0', 'urethroplasty_3.0', 'urethroplasty_4.0',
+       'urethroplasty_5.0', 'urethroplasty_6.0','time','event'
+   
+]
 
-  
-    'event',
-
-
-    'time',
-    'open_clean', 
-    
-        ]
     
     for col in features:
         # Only replace in object (string) columns to avoid breaking real floats
         if data[col].dtype == object:
             data[col] = data[col].str.replace(',', '.')
+            print(col)
+
+ 
+
+    
 
     #Castt feature values to float
     data = data[features].astype("float32")
