@@ -532,11 +532,13 @@ def main(args=None):
             if isinstance(surv_test, torch.Tensor):
                 surv_test = surv_test.cpu().numpy()
             evaler = SurvivalEvaluator(surv_test, time_coordinates, t_test, e_test, t_train_val, e_train_val,
+            
                                        predict_time_method="Median", interpolation='Linear')
+            """
             fig, ax = plt.subplots(figsize=(6, 4))
             event_idx = np.where(e_test == 1)[0][0:2]
-            for j, idx in enumerate(event_idx):
-                ax = plt.plot(time_coordinates, 1 - surv_test[idx], label=f'Failure #{j + 1}')
+            #for j, idx in enumerate(event_idx):
+                #ax = plt.plot(time_coordinates, 1 - surv_test[idx], label=f'Failure #{j + 1}')
 
             censor_idx = np.where(e_test == 0)[0][0:3]
             for j, idx in enumerate(censor_idx):
@@ -545,6 +547,7 @@ def main(args=None):
             ax = plt.ylabel("Urethroplasty Failure Probability")
             plt.legend()
             fig.savefig(f'{path}/{args.model}_{i}.png', dpi=400)
+            """
         else:
             if isinstance(quan_levels, torch.Tensor):
                 quan_levels = quan_levels.cpu().numpy()
