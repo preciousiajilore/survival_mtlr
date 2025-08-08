@@ -66,7 +66,7 @@ def main(args=None):
     wandb.define_metric("AUC", summary="mean")
 
     args = wandb.config
-    data = pd.read_csv("/Users/preciousajilore/Documents/GitHub/torchmtlr/notebooks/prepostop.csv")
+    data = pd.read_csv("data/prepostop.csv")
     def bracket_to_num(val):
         if isinstance(val, str) and re.fullmatch(r"\[\d+\]", val):
             return int(val.strip("[]"))
@@ -302,8 +302,11 @@ def main(args=None):
             x_test = torch.from_numpy(x_test).float().to(device)
             surv_test = model.predict_survival(x_test)
             time_coordinates = model.time_bins
-            time_coordinates = pad_tensor(time_coordinates, 0, where='start')
-            time_coordinates = np.sort(np.unique(time_coordinates)) # why?
+            if time_coordinates[0] > 0:
+                time_coordinates = pad_tensor(time_coordinates, 0, where='start')
+            elif time_coordinates[0] == 0:
+                surv_test = surv_test[:, 1:]
+            # time_coordinates = np.sort(np.unique(time_coordinates)) # why?
         elif args.model == "CQRNN":
             model = CenQuanRegNN(
                 n_features=n_features,
