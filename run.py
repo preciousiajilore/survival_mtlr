@@ -56,6 +56,23 @@ def main(args=None):
 
     args = wandb.config
     data = pd.read_csv("/Users/preciousajilore/Documents/GitHub/torchmtlr/notebooks/x_before_surgery.csv")
+    #dataset = pd.read_csv("data/prepostop.csv")
+    if args.dataset == "pre_surgery":
+        data= pd.read_csv("/Users/preciousajilore/Documents/GitHub/torchmtlr/notebooks/preop.csv")
+    elif args.dataset =="post_surgery":
+        data = pd.read_csv("data/prepostop.csv")
+    elif args.dataset == "after_surgery":
+        raise ValueError("Dataset not available sorry lol")
+  
+    def bracket_to_num(val):
+        if isinstance(val, str) and re.fullmatch(r"\[\d+\]", val):
+            return int(val.strip("[]"))
+        return val
+    
+    
+     
+    
+    data.replace('?', np.nan, inplace=True)
     data.rename(columns={'time_to_event': 'time',
                          'failure': 'event'}, inplace=True)
     # columns that need to be standardized
