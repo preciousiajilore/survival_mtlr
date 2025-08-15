@@ -89,50 +89,27 @@ def main(args=None):
     """
     
 
-    cols_stdz = ['bmiexact','stxlength_1', 'stxlength_2']
+    cols_stdz = ['stx_length_1', 'stx_length_2']
     #features = data.columns.to_list()
     
     features = [
-
-       'stxlength_1', 
-       'stxlength_2', 
-       'stxlocation_0',
-       'stxlocation_1', 
-       'stxlocation_2', 
-       'stxlocation_3',
-       'stxlocation_4',
-       'stxlocation_5', 
-       'stxlocation_6', 
-       'stxetiology_0', 
-       'stxetiology_1',
-       'stxetiology_18', 
-       'stxetiology_2', 
-       'stxetiology_3', 
-       'stxetiology_4',
-       'stxetiology_5', 
-       'stxetiology_6',
-
-    'distal', 
-    'penile',
-    '#strictures', 
-    'charlsons', 
-    'cormorbidity', 
-    'diabetes',
-    'copd', 
-    'smoker', 
-    'prevprocedure',
-    '#prevprocedures',
-    'cysto', 
-    'bmiexact',
-  
-    'event',
-    
-
-    'time',
-    'open_clean', 
-
-        ]
-    
+   # drop event/time
+       'distal', 'penile', 
+       '#strictures', 'charlsons', 'cormorbidity', 'diabetes', 'copd',
+       'smoker', 'bmi35+', 'prevprocedure', '#prevprocedures','open',
+       'urine', 'stxetiology_0',
+       'stxetiology_1', 'stxetiology_2', 'stxetiology_3', 'stxetiology_4',
+       'stxetiology_5', 'stxetiology_6', 'stxlocation_0', 'stxlocation_1',
+       'stxlocation_2', 'stxlocation_3', 'stxlocation_4', 'stxlocation_5',
+       'stxlocation_6', 'stx_length_1', 'stx_length_2', 'cysto_0.0',
+       'cysto_1.0', 'cysto_2.0', 'cysto_3.0', 'abx', 'erectilepre', 'uti',
+       'los(days)', 'spc', 'transection',
+       'tissue_0.0', 'tissue_1.0', 'tissue_2.0',
+       'tissue_3.0', 'tissue_4.0', 'tissue_5.0', 'urethroplasty_1.0',
+       'urethroplasty_2.0', 'urethroplasty_3.0', 'urethroplasty_4.0',
+       'urethroplasty_5.0', 'urethroplasty_6.0','time','event'
+   
+]
     #for col in features:
         #print(col, data[col].unique())
     data.replace('?', np.nan, inplace=True)
